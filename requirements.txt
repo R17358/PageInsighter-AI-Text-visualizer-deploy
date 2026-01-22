@@ -1,11 +1,18 @@
-﻿streamlit
+﻿fastapi
+uvicorn
+python-multipart
+pydantic
+
+streamlit
 requests
-Pillow
-python-dotenv
+
 opencv-python
 numpy
-PyPDF2
-google-generativeai
+Pillow
+
 pytesseract
+PyPDF2
 
+google-generativeai
 
+python-dotenv
