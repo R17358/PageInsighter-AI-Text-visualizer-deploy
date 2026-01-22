@@ -9,9 +9,10 @@ from dotenv import load_dotenv
 load_dotenv()
 
 API_KEY = os.getenv("gemini_key")
+gemini_model = os.getenv("gemini_model")
 
 genai.configure(api_key=API_KEY)
-model = genai.GenerativeModel('gemini-1.5-flash')
+model = genai.GenerativeModel(gemini_model)
 
 def stream_data(data, delay: float = 0.02):
     words = re.split(r'[ *]', data)

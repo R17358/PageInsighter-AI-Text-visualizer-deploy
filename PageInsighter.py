@@ -15,12 +15,13 @@ import pytesseract
 load_dotenv()
 
 API_KEY = os.getenv("gemini_key")
+gemini_model = os.getenv("gemini_model")
 
 # requirement.txt file : pip freeze > requirements.txt
 
 # Configure API key and initialize model
 genai.configure(api_key=API_KEY)
-model = genai.GenerativeModel('gemini-1.5-flash')
+model = genai.GenerativeModel('gemini_model')
 
 if 'stop' not in st.session_state:
     st.session_state.stop = False
