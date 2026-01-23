@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: pageinsighter-api
+    env: docker
+    plan: free # Change to 'starter' or higher for production
+    region: oregon # Choose your preferred region
+    branch: main # Your git branch
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: gemini_key
+        sync: false # Set this in Render dashboard
+      - key: gemini_model
+        value: gemini-1.5-flash # or your preferred model
+      - key: PORT
+        value: 8000
+    healthCheckPath: /

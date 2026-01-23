@@ -1,18 +1,19 @@
-﻿fastapi
-uvicorn
-python-multipart
-pydantic
+﻿# FastAPI and server
+fastapi==0.109.0
+uvicorn[standard]==0.27.0
+python-multipart==0.0.6
+pydantic==2.5.3
 
-streamlit
-requests
+# Computer Vision and OCR
+opencv-python-headless==4.9.0.80
+numpy==1.26.3
+Pillow==10.2.0
+pytesseract==0.3.10
+PyPDF2==3.0.1
 
-opencv-python
-numpy
-Pillow
+# AI/ML
+google-generativeai==0.3.2
 
-pytesseract
-PyPDF2
-
-google-generativeai
-
-python-dotenv
+# Utilities
+python-dotenv==1.0.0
+requests==2.31.0
