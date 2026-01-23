@@ -257,7 +257,7 @@ async function visualize() {
     body: JSON.stringify({ query: visualText.value })
   });
   visualImage.src = "data:image/png;base64," + (await r.json()).image;
-}
+}  //need to be fixed for visulals
 
 async function processFile() {
   const f = new FormData();
