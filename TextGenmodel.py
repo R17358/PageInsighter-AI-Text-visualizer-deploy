@@ -2,7 +2,6 @@ import google.generativeai as genai
 import os
 import time
 import re
-import streamlit as st
 import os
 from dotenv import load_dotenv
 
@@ -16,10 +15,10 @@ model = genai.GenerativeModel(gemini_model)
 
 def stream_data(data, delay: float = 0.02):
     words = re.split(r'[ *]', data)
-    for word in words:
-        st.text(word + " ", end='', flush=True)
-        time.sleep(delay)
-    st.text()  
+    # for word in words:
+    #     st.text(word + " ", end='', flush=True)
+    #     time.sleep(delay)
+    # st.text()  
     
 def chatResponse(user_input):
     #user_input = input("Enter prompt: ")
