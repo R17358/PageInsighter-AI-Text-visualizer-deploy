@@ -10,9 +10,14 @@ ENV PYTHONUNBUFFERED=1 \
     PORT=8000 \
     DEBIAN_FRONTEND=noninteractive
 
+<<<<<<< HEAD
 # Install system dependencies
 # Split into separate RUN commands for better debugging and layer caching
 RUN apt-get update && apt-get install -y --no-install-recommends \
+=======
+# Install system dependencies including Py Tesseract OCR
+RUN apt-get update && apt-get install -y \
+>>>>>>> da779b2101426e763b7ae90acf8c2a831b3ba018
     tesseract-ocr \
     tesseract-ocr-eng \
     tesseract-ocr-hin \
@@ -62,4 +67,8 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD wget --no-verbose --tries=1 --spider http://localhost:${PORT}/ || exit 1
 
 # Run the application
+<<<<<<< HEAD
 CMD uvicorn main:app --host 0.0.0.0 --port ${PORT} --workers 1
+=======
+CMD uvicorn main:app --host 0.0.0.0 --port ${PORT}
+>>>>>>> da779b2101426e763b7ae90acf8c2a831b3ba018
