@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>PageInsighter AI</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600&family=Inter:wght@300;500&display=swap');
+
+:root {
+  --bg: #0b0f1a;
+  --glass: rgba(255,255,255,0.06);
+  --border: rgba(255,255,255,0.12);
+  --neon: #4f9cff;
+  --pink: #ff4ecd;
+  --text: #e5e7eb;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: radial-gradient(circle at top, #0f172a, var(--bg));
+  color: var(--text);
+  font-family: Inter, sans-serif;
+}
+
+/* ===== Header ===== */
+header {
+  padding: 20px;
+  text-align: center;
+  font-family: Orbitron;
+  font-size: 28px;
+  letter-spacing: 1px;
+  color: white;
+  text-shadow:
+    0 0 10px var(--neon),
+    0 0 25px var(--pink);
+}
+
+/* ===== Layout ===== */
+.container {
+  max-width: 1200px;
+  margin: auto;
+  padding: 20px;
+  display: grid;
+  gap: 20px;
+}
+
+/* ===== Glass Cards ===== */
+.card {
+  background: linear-gradient(
+    135deg,
+    rgba(255,255,255,0.08),
+    rgba(255,255,255,0.02)
+  );
+  border: 1px solid var(--border);
+  backdrop-filter: blur(14px);
+  border-radius: 16px;
+  padding: 22px;
+  box-shadow:
+    0 0 30px rgba(79,156,255,0.12),
+    inset 0 0 20px rgba(255,255,255,0.05);
+  animation: floatIn 0.8s ease;
+}
+
+@keyframes floatIn {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+h2 {
+  font-family: Orbitron;
+  margin-top: 0;
+  color: var(--neon);
+  text-shadow: 0 0 10px rgba(79,156,255,0.7);
+}
+
+/* ===== Inputs ===== */
+textarea, input, select {
+  width: 100%;
+  background: rgba(0,0,0,0.6);
+  color: white;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px;
+  margin-top: 10px;
+  transition: all 0.3s ease;
+}
+
+textarea:focus, input:focus, select:focus {
+  outline: none;
+  border-color: var(--neon);
+  box-shadow: 0 0 12px var(--neon);
+}
+
+textarea {
+  min-height: 90px;
+  resize: vertical;
+}
+
+/* ===== Buttons ===== */
+button {
+  margin-top: 14px;
+  padding: 12px;
+  border-radius: 999px;
+  border: none;
+  font-weight: 600;
+  color: white;
+  cursor: pointer;
+  background: linear-gradient(135deg, var(--neon), var(--pink));
+  box-shadow:
+    0 0 18px rgba(79,156,255,0.6);
+  transition: transform 0.25s ease, box-shadow 0.25s ease;
+}
+
+button:hover {
+  transform: scale(1.05);
+  box-shadow:
+    0 0 35px rgba(255,78,205,0.8);
+}
+
+/* ===== Output ===== */
+.output {
+  background: rgba(0,0,0,0.5);
+  padding: 14px;
+  border-radius: 12px;
+  margin-top: 12px;
+  border: 1px solid var(--border);
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+/* ===== Images ===== */
+.images {
+  margin-top: 14px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 14px;
+}
+
+.generated {
+  width: 100%;
+  border-radius: 14px;
+  box-shadow:
+    0 0 25px rgba(79,156,255,0.5);
+  animation: glowPulse 3s infinite alternate;
+}
+
+@keyframes glowPulse {
+  from { box-shadow: 0 0 15px var(--neon); }
+  to { box-shadow: 0 0 35px var(--pink); }
+}
+
+/* ===== Footer ===== */
+footer {
+  text-align: center;
+  padding: 18px;
+  font-size: 13px;
+  opacity: 0.6;
+}
+</style>
+</head>
+
+<body>
+
+<header>PAGEINSIGHTER ✦ AI VISION</header>
+
+<div class="container">
+
+  <div class="card">
+    <h2>Ask AI</h2>
+    <textarea id="queryText" placeholder="Ask anything..."></textarea>
+    <select id="queryLang">
+      <option value="none">No Translation</option>
+      <option value="hindi">Hindi</option>
+      <option value="english">English</option>
+    </select>
+    <button onclick="askQuery()">Submit</button>
+    <div id="queryResult" class="output"></div>
+  </div>
+
+  <div class="card">
+    <h2>Image Prompt Generator</h2>
+    <textarea id="promptText" placeholder="Describe scene..."></textarea>
+    <button onclick="generatePrompt()">Generate Prompt</button>
+    <div id="promptResult" class="output"></div>
+  </div>
+
+  <div class="card">
+    <h2>Visualize Text</h2>
+    <textarea id="visualText" placeholder="Turn text into image..."></textarea>
+    <button onclick="visualize()">Generate Image</button>
+    <img id="visualImage" class="generated"/>
+  </div>
+
+  <div class="card">
+    <h2>Upload Image / PDF</h2>
+    <input type="file" id="fileInput" />
+    <select id="fileLang">
+      <option value="hindi">Hindi</option>
+      <option value="english">English</option>
+      <option value="none">No Translation</option>
+    </select>
+
+    <label><input type="checkbox" id="explainCheck"/> Explain</label>
+    <label><input type="checkbox" id="imageCheck" checked/> Generate Images</label>
+
+    <button onclick="processFile()">Process</button>
+
+    <div id="fileResult" class="output"></div>
+    <div id="fileImages" class="images"></div>
+  </div>
+
+</div>
+
+<footer>© PageInsighter • Dark AI Interface</footer>
+
+<script>
+const API = "https://pageinsighter.onrender.com";
+
+async function askQuery() {
+  const r = await fetch(`${API}/api/query`, {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({
+      query: queryText.value,
+      language: queryLang.value
+    })
+  });
+  const d = await r.json();
+  queryResult.innerHTML = d.answer + "<hr>" + (d.translation || "");
+}
+
+async function generatePrompt() {
+  const r = await fetch(`${API}/api/generate-image-prompt`, {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({ text: promptText.value })
+  });
+  promptResult.textContent = (await r.json()).prompt;
+}
+
+async function visualize() {
+  const r = await fetch(`${API}/api/visualize`, {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({ query: visualText.value })
+  });
+  visualImage.src = "data:image/png;base64," + (await r.json()).image;
+}
+
+async function processFile() {
+  const f = new FormData();
+  f.append("file", fileInput.files[0]);
+  f.append("language", fileLang.value);
+  f.append("explain", explainCheck.checked);
+  f.append("generate_images", imageCheck.checked);
+
+  const r = await fetch(`${API}/api/process-file`, {
+    method: "POST",
+    body: f
+  });
+
+  const d = await r.json();
+  fileResult.innerHTML = `
+    <b>Extracted:</b><br>${d.extracted_text}<hr>
+    <b>Summary:</b><br>${d.summary}<hr>
+    <b>Translation:</b><br>${d.translation || ""}
+  `;
+
+  fileImages.innerHTML = "";
+  (d.images || []).forEach(img => {
+    const i = document.createElement("img");
+    i.src = "data:image/png;base64," + img.image;
+    i.className = "generated";
+    fileImages.appendChild(i);
+  });
+}
+</script>
+
+</body>
+</html>
