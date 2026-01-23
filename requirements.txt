@@ -4,7 +4,7 @@ uvicorn[standard]==0.27.0
 python-multipart==0.0.6
 pydantic==2.5.3
 
-# Computer Vision and OCR
+# Computer Vision and OCR - HEADLESS version (no GUI dependencies)
 opencv-python-headless==4.9.0.80
 numpy==1.26.3
 Pillow==10.2.0
