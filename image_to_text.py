@@ -10,7 +10,7 @@ import io
 load_dotenv()
 
 GEMINI_API_KEY = os.getenv("gemini_key")
-MODEL_NAME = os.getenv("GEMINI_VISION_MODEL")
+MODEL_NAME = os.getenv("gemini_model")
 
 # Configure Gemini
 genai.configure(api_key=GEMINI_API_KEY)
