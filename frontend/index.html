@@ -792,7 +792,7 @@ footer {
 
 <div class="toast-container" id="toastContainer"></div>
 
-<script>
+  <script>
 const API = "https://pageinsighter-yn21.onrender.com";
 
 // Stats
@@ -889,6 +889,16 @@ function showOutput(id, content) {
   el.style.display = 'block';
 }
 
+function downloadImage(base64Data, filename) {
+  const link = document.createElement('a');
+  link.href = 'data:image/png;base64,' + base64Data;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  showToast('success', 'Downloaded!', `Image saved as ${filename}`);
+}
+
 // Improved API call handler with proper error parsing
 async function handleApiCall(apiFunc, loadingId, errorTitle) {
   showLoading(loadingId);
@@ -947,7 +957,7 @@ async function parseApiResponse(response) {
   return data;
 }
 
-// Updated API Functions
+// API Functions
 async function askQuery() {
   const query = document.getElementById('queryText').value.trim();
   if(!query) {
@@ -1108,12 +1118,81 @@ async function explainImage() {
   }, 'explainLoading', 'Image Explanation Failed');
 }
 
+// File preview handlers
+document.getElementById('fileInput').addEventListener('change', function(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  
+  let previewContainer = document.getElementById('filePreview');
+  if (!previewContainer) {
+    previewContainer = document.createElement('div');
+    previewContainer.id = 'filePreview';
+    previewContainer.className = 'file-preview';
+    e.target.parentElement.appendChild(previewContainer);
+  }
+  
+  previewContainer.innerHTML = '';
+  
+  if (file.type.startsWith('image/')) {
+    const reader = new FileReader();
+    reader.onload = function(event) {
+      previewContainer.innerHTML = `
+        <div class="preview-wrapper">
+          <img src="${event.target.result}" alt="Preview" class="preview-image">
+          <p class="preview-filename">${file.name}</p>
+        </div>
+      `;
+    };
+    reader.readAsDataURL(file);
+  } else {
+    previewContainer.innerHTML = `
+      <div class="preview-wrapper">
+        <div class="file-icon">📄</div>
+        <p class="preview-filename">${file.name}</p>
+        <p class="preview-filesize">${(file.size / 1024).toFixed(2)} KB</p>
+      </div>
+    `;
+  }
+});
 
-        
+document.getElementById('explainInput').addEventListener('change', function(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  
+  let previewContainer = document.getElementById('explainPreview');
+  if (!previewContainer) {
+    previewContainer = document.createElement('div');
+    previewContainer.id = 'explainPreview';
+    previewContainer.className = 'file-preview';
+    e.target.parentElement.appendChild(previewContainer);
+  }
+  
+  previewContainer.innerHTML = '';
+  
+  if (file.type.startsWith('image/')) {
+    const reader = new FileReader();
+    reader.onload = function(event) {
+      previewContainer.innerHTML = `
+        <div class="preview-wrapper">
+          <img src="${event.target.result}" alt="Preview" class="preview-image">
+          <p class="preview-filename">${file.name}</p>
+        </div>
+      `;
+    };
+    reader.readAsDataURL(file);
+  } else {
+    previewContainer.innerHTML = `
+      <div class="preview-wrapper">
+        <div class="file-icon">🖼️</div>
+        <p class="preview-filename">${file.name}</p>
+        <p class="preview-error">Please select an image file</p>
+      </div>
+    `;
+  }
+});
 
 // Keyboard shortcuts
 document.addEventListener('keydown', (e) => {
-  // Ctrl/Cmd + Enter to submit in textareas
   if((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
     const activeTab = document.querySelector('.tab-content.active');
     const textarea = activeTab.querySelector('textarea');
@@ -1136,187 +1215,6 @@ document.addEventListener('keydown', (e) => {
     }
   }
 });
-
-// Add preview when file is selected for processFile
-document.getElementById('fileInput').addEventListener('change', function(e) {
-  const file = e.target.files[0];
-  if (!file) return;
-  
-  const previewContainer = document.getElementById('filePreview');
-  if (!previewContainer) {
-    // Create preview container if it doesn't exist
-    const container = document.createElement('div');
-    container.id = 'filePreview';
-    container.className = 'file-preview';
-    e.target.parentElement.appendChild(container);
-  }
-  
-  const preview = document.getElementById('filePreview');
-  preview.innerHTML = '';
-  
-  if (file.type.startsWith('image/')) {
-    const reader = new FileReader();
-    reader.onload = function(event) {
-      preview.innerHTML = `
-        <div class="preview-wrapper">
-          <img src="${event.target.result}" alt="Preview" class="preview-image">
-          <p class="preview-filename">${file.name}</p>
-        </div>
-      `;
-    };
-    reader.readAsDataURL(file);
-  } else {
-    preview.innerHTML = `
-      <div class="preview-wrapper">
-        <div class="file-icon">📄</div>
-        <p class="preview-filename">${file.name}</p>
-        <p class="preview-filesize">${(file.size / 1024).toFixed(2)} KB</p>
-      </div>
-    `;
-  }
-});
-
-// Add preview when image is selected for explainImage
-document.getElementById('explainInput').addEventListener('change', function(e) {
-  const file = e.target.files[0];
-  if (!file) return;
-  
-  const previewContainer = document.getElementById('explainPreview');
-  if (!previewContainer) {
-    const container = document.createElement('div');
-    container.id = 'explainPreview';
-    container.className = 'file-preview';
-    e.target.parentElement.appendChild(container);
-  }
-  
-  const preview = document.getElementById('explainPreview');
-  preview.innerHTML = '';
-  
-  if (file.type.startsWith('image/')) {
-    const reader = new FileReader();
-    reader.onload = function(event) {
-      preview.innerHTML = `
-        <div class="preview-wrapper">
-          <img src="${event.target.result}" alt="Preview" class="preview-image">
-          <p class="preview-filename">${file.name}</p>
-        </div>
-      `;
-    };
-    reader.readAsDataURL(file);
-  } else {
-    preview.innerHTML = `
-      <div class="preview-wrapper">
-        <div class="file-icon">🖼️</div>
-        <p class="preview-filename">${file.name}</p>
-        <p class="preview-error">Please select an image file</p>
-      </div>
-    `;
-  }
-});
-
-async function processFile() {
-  const fileInput = document.getElementById('fileInput');
-  if(!fileInput.files[0]) {
-    showToast('warning', 'File Required', 'Please select a file to process');
-    return;
-  }
-  
-  await handleApiCall(async () => {
-    const f = new FormData();
-    f.append("file", fileInput.files[0]);
-    f.append("language", document.getElementById('fileLang').value);
-    f.append("explain", document.getElementById('explainCheck').checked);
-    f.append("generate_images", document.getElementById('imageCheck').checked);
-    const r = await fetch(`${API}/api/process-file`, {
-      method: "POST",
-      body: f
-    });
-    
-    if(!r.ok) throw new Error(`HTTP ${r.status}`);
-    
-    const d = await r.json();
-    
-    let content = '';
-    if(d.extracted_text) {
-      content += `<b>Extracted Text:</b><br>${d.extracted_text}<hr>`;
-    }
-    if(d.summary) {
-      content += `<b>Summary:</b><br>${d.summary}<hr>`;
-    }
-    if(d.translation) {
-      content += `<b>Translation:</b><br>${d.translation}`;
-    }
-    
-    showOutput('fileResult', content);
-    
-    const imagesContainer = document.getElementById('fileImages');
-    imagesContainer.innerHTML = '';
-    
-    if(d.images && d.images.length > 0) {
-      d.images.forEach((img, index) => {
-        const wrapper = document.createElement('div');
-        wrapper.className = 'image-wrapper';
-        
-        const imgElement = document.createElement('img');
-        imgElement.src = "data:image/png;base64," + img.image;
-        imgElement.className = 'generated';
-        imgElement.alt = `Generated image ${index + 1}`;
-        
-        const downloadBtn = document.createElement('button');
-        downloadBtn.className = 'download-btn';
-        downloadBtn.textContent = '⬇ Download';
-        downloadBtn.onclick = () => downloadImage(img.image, `pageinsighter-${index + 1}.png`);
-        
-        wrapper.appendChild(imgElement);
-        wrapper.appendChild(downloadBtn);
-        imagesContainer.appendChild(wrapper);
-        
-        incrementStat('imagesGenerated');
-      });
-    }
-    
-    incrementStat('filesProcessed');
-  }, 'fileLoading', 'File Processing Failed');
-}
-
-async function explainImage() {
-  const fileInput = document.getElementById('explainInput');
-  if(!fileInput.files[0]) {
-    showToast('warning', 'File Required', 'Please select an image to explain');
-    return;
-  }
-  
-  await handleApiCall(async () => {
-    const f = new FormData();
-    f.append("file", fileInput.files[0]);
-    f.append("language", document.getElementById('explainLang').value);
-    const r = await fetch(`${API}/api/explain-image`, {
-      method: "POST",
-      body: f
-    });
-    
-    if(!r.ok) throw new Error(`HTTP ${r.status}`);
-    
-    const d = await r.json();
-    
-    let content = `<b>Explanation:</b><br>${d.explanation}`;
-    if(d.translation) {
-      content += `<hr><b>Translation:</b><br>${d.translation}`;
-    }
-    
-    showOutput('explainResult', content);
-  }, 'explainLoading', 'Image Explanation Failed');
-}
-
-function downloadImage(base64Data, filename) {
-  const link = document.createElement('a');
-  link.href = 'data:image/png;base64,' + base64Data;
-  link.download = filename;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  showToast('success', 'Downloaded!', `Image saved as ${filename}`);
-}
 
 // Auto-resize textareas
 document.querySelectorAll('textarea').forEach(textarea => {
