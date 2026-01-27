@@ -14,7 +14,7 @@ import io
 import base64
 from dotenv import load_dotenv
 
-# Import your custom modules
+# Import your custom module
 from otherImgGen import ImageGenerator as IG
 from image_to_text import ImageToText
 
