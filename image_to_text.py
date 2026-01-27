@@ -1,38 +1,39 @@
-
-import requests
-from PIL import Image
-import base64
-import io
+# ans = ImageToText("assets/village.jpg")
+# print(ans)
 import os
+from PIL import Image
 from dotenv import load_dotenv
+import google.generativeai as genai
 
+# Load env variables
 load_dotenv()
 
-API_URL = os.getenv("api_url")
-API_KEY = os.getenv("api_key")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+MODEL_NAME = os.getenv("GEMINI_VISION_MODEL")
 
-headers = {"Authorization": f"Bearer {API_KEY}"}
+# Configure Gemini
+genai.configure(api_key=GEMINI_API_KEY)
 
-def query(payload):
-    response = requests.post(API_URL, headers=headers, json=payload)
-    try:
-        return response.json()  # Convert response to JSON
-    except requests.exceptions.JSONDecodeError:
-        return {"error": "Response could not be decoded as JSON"}
+# Load model
+model = genai.GenerativeModel(MODEL_NAME)
 
-def ImageToText(path):
-    # Open the image
-    image = Image.open(path)
-    # Convert image to binary format (base64 encoding optional for different APIs)
-    buffered = io.BytesIO()
-    image.save(buffered, format="JPEG")
-    image_bytes = buffered.getvalue()
-    image_base64 = base64.b64encode(image_bytes).decode("utf-8")
+def ImageToText(image_path):
+    """
+    Takes an image path and returns text description.
+    If image contains a math problem, it solves it.
+    """
+    img = Image.open(image_path)
 
-    # Query the API with encoded image
-    payload = {"inputs": image_base64}
-    output = query(payload)
-    return output[0].get("generated_text")
+    prompt = """
+    Describe the image clearly.
+    If the image contains a mathematical problem, solve it step by step.
+    """
 
+    response = model.generate_content([prompt, img])
+
+    return response.text.strip()
+
+
+# Example usage
 # ans = ImageToText("assets/village.jpg")
 # print(ans)
