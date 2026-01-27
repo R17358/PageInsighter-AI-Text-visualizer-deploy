@@ -18,6 +18,10 @@ from dotenv import load_dotenv
 from otherImgGen import ImageGenerator as IG
 from image_to_text import ImageToText
 
+from fastapi import UploadFile, File, Form, HTTPException
+from fastapi.responses import JSONResponse
+import io
+
 load_dotenv()
 
 app = FastAPI(title="PageInsighter API", version="1.0.0")
@@ -321,46 +325,53 @@ async def process_file(
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/explain-image")
-async def explain_image(file: UploadFile = File(...), language: str = Form("hindi")):
-    """Explain image content using vision model"""
+async def explain_image(
+    file: UploadFile = File(...),
+    language: str = Form("hindi")
+):
     try:
         content = await file.read()
-        
+
         if not is_image_file(content):
             raise HTTPException(status_code=400, detail="File is not a valid image")
-        
-        # Use ImageToText function
-        explanation = ImageToText(io.BytesIO(content))
-        
-        # Generate detailed explanation
-        detailed_prompt = f"""Determine if the input is a mathematical problem or descriptive text. 
-- If it is a mathematical problem, explain the steps clearly, provide detailed calculations, and include the final answer. 
-- If it is descriptive text, provide a detailed and well-structured explanation.
 
-Write everything in HTML format with inline styles. 
-Ensure proper formatting for clarity and readability, using appropriate headings, paragraphs, and lists where necessary. 
+        # Step 1: Image → Text (Vision)
+        explanation = ImageToText(content)
 
-The response should be visually appealing, with attention to font size, color, and layout to ensure ease of understanding based on the type of input. 
+        # Step 2: Text → Detailed HTML explanation
+        detailed_prompt = f"""
+You are an intelligent tutor.
 
-Additionally, implement the following dynamic styling for readability:
-- set the font color to dark (e.g., `#000000`),
-- set the background color light (e.g., `#FFFFFF`, `#F0F0F0`),
-- set the background border-radius of 8px,
+Determine whether the input below is:
+1) A mathematical problem → explain step-by-step with calculations and final answer
+2) Descriptive/visual content → explain clearly and structurally
 
-The input to be analyzed is: {explanation}."""
+Rules:
+- Output MUST be valid HTML
+- Use inline CSS
+- Background: #F5F5F5
+- Text color: #000000
+- Border-radius: 8px
+- Padding: 16px
+- Use <h2>, <p>, <ul>, <li>, <b>
+
+Input:
+{explanation}
+"""
 
         detailed_explanation = model.generate_content(detailed_prompt).text
-        
-        # Translate
+
+        # Step 3: Optional Translation
         translation = None
         if language and language.lower() != "none":
             translation = translate_text(detailed_explanation, language)
-        
+
         return JSONResponse({
             "success": True,
             "explanation": detailed_explanation,
             "translation": translation
         })
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
