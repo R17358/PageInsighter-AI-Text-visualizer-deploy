@@ -67,16 +67,37 @@ def error_response(message: str, error_type: str = "error", status_code: int = 5
         }
     )
 
-# Helper functions
-def recognize_text(image_array: np.ndarray) -> str:
-    """Extract text from image using OCR"""
+def recognize_text(image_array):
     try:
-        gray = cv2.cvtColor(image_array, cv2.COLOR_BGR2GRAY)
-        text = pytesseract.image_to_string(gray, lang='hin+eng')
-        return text.strip()
+        # Convert numpy array back to PIL Image
+        image = Image.fromarray(image_array)
+
+        prompt = """
+        Extract all text from this image exactly as it appears.
+        Do not summarize.
+        Do not explain.
+        Preserve line breaks, symbols, and formatting as much as possible.
+        """
+
+        response = model.generate_content(
+            [
+                prompt,
+                image
+            ]
+        )
+
+        if not response or not response.text:
+            raise ValueError("No text detected in image")
+
+        return response.text.strip()
+
     except Exception as e:
         print(f"OCR Error: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"OCR failed. Please ensure Tesseract is installed.")
+        # You can either raise or return, raising is better for APIs
+        raise HTTPException(
+            status_code=500,
+            detail="OCR failed. Unable to extract text from image."
+        )
 
 def is_image_file(file_content: bytes) -> bool:
     """Check if file is a valid image"""
