@@ -579,6 +579,50 @@ footer {
   margin-top: 50px;
   border-top: 1px solid var(--border);
 }
+.file-preview {
+  margin: 15px 0;
+  padding: 15px;
+  background: #f8f9fa;
+  border-radius: 8px;
+  border: 2px dashed #ddd;
+}
+
+.preview-wrapper {
+  text-align: center;
+}
+
+.preview-image {
+  max-width: 100%;
+  max-height: 300px;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  margin-bottom: 10px;
+}
+
+.file-icon {
+  font-size: 48px;
+  margin: 20px 0;
+}
+
+.preview-filename {
+  font-weight: 600;
+  color: #333;
+  margin: 10px 0 5px 0;
+  word-break: break-all;
+}
+
+.preview-filesize {
+  color: #666;
+  font-size: 14px;
+  margin: 5px 0;
+}
+
+.preview-error {
+  color: #dc3545;
+  font-size: 14px;
+  margin-top: 5px;
+}
+  
 
 /* Responsive */
 @media (max-width: 768px) {
@@ -933,6 +977,112 @@ async function visualize() {
   }, 'visualLoading', 'Visualization Failed');
 }
 
+        
+        
+
+// Keyboard shortcuts
+document.addEventListener('keydown', (e) => {
+  // Ctrl/Cmd + Enter to submit in textareas
+  if((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+    const activeTab = document.querySelector('.tab-content.active');
+    const textarea = activeTab.querySelector('textarea');
+    
+    if(textarea && textarea === document.activeElement) {
+      e.preventDefault();
+      const activeTabId = activeTab.id;
+      
+      switch(activeTabId) {
+        case 'query':
+          askQuery();
+          break;
+        case 'prompt':
+          generatePrompt();
+          break;
+        case 'visualize':
+          visualize();
+          break;
+      }
+    }
+  }
+});
+
+// Add preview when file is selected for processFile
+document.getElementById('fileInput').addEventListener('change', function(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  
+  const previewContainer = document.getElementById('filePreview');
+  if (!previewContainer) {
+    // Create preview container if it doesn't exist
+    const container = document.createElement('div');
+    container.id = 'filePreview';
+    container.className = 'file-preview';
+    e.target.parentElement.appendChild(container);
+  }
+  
+  const preview = document.getElementById('filePreview');
+  preview.innerHTML = '';
+  
+  if (file.type.startsWith('image/')) {
+    const reader = new FileReader();
+    reader.onload = function(event) {
+      preview.innerHTML = `
+        <div class="preview-wrapper">
+          <img src="${event.target.result}" alt="Preview" class="preview-image">
+          <p class="preview-filename">${file.name}</p>
+        </div>
+      `;
+    };
+    reader.readAsDataURL(file);
+  } else {
+    preview.innerHTML = `
+      <div class="preview-wrapper">
+        <div class="file-icon">📄</div>
+        <p class="preview-filename">${file.name}</p>
+        <p class="preview-filesize">${(file.size / 1024).toFixed(2)} KB</p>
+      </div>
+    `;
+  }
+});
+
+// Add preview when image is selected for explainImage
+document.getElementById('explainInput').addEventListener('change', function(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  
+  const previewContainer = document.getElementById('explainPreview');
+  if (!previewContainer) {
+    const container = document.createElement('div');
+    container.id = 'explainPreview';
+    container.className = 'file-preview';
+    e.target.parentElement.appendChild(container);
+  }
+  
+  const preview = document.getElementById('explainPreview');
+  preview.innerHTML = '';
+  
+  if (file.type.startsWith('image/')) {
+    const reader = new FileReader();
+    reader.onload = function(event) {
+      preview.innerHTML = `
+        <div class="preview-wrapper">
+          <img src="${event.target.result}" alt="Preview" class="preview-image">
+          <p class="preview-filename">${file.name}</p>
+        </div>
+      `;
+    };
+    reader.readAsDataURL(file);
+  } else {
+    preview.innerHTML = `
+      <div class="preview-wrapper">
+        <div class="file-icon">🖼️</div>
+        <p class="preview-filename">${file.name}</p>
+        <p class="preview-error">Please select an image file</p>
+      </div>
+    `;
+  }
+});
+
 async function processFile() {
   const fileInput = document.getElementById('fileInput');
   if(!fileInput.files[0]) {
@@ -946,7 +1096,6 @@ async function processFile() {
     f.append("language", document.getElementById('fileLang').value);
     f.append("explain", document.getElementById('explainCheck').checked);
     f.append("generate_images", document.getElementById('imageCheck').checked);
-
     const r = await fetch(`${API}/api/process-file`, {
       method: "POST",
       body: f
@@ -969,7 +1118,6 @@ async function processFile() {
     
     showOutput('fileResult', content);
     
-    // Display generated images
     const imagesContainer = document.getElementById('fileImages');
     imagesContainer.innerHTML = '';
     
@@ -1011,7 +1159,6 @@ async function explainImage() {
     const f = new FormData();
     f.append("file", fileInput.files[0]);
     f.append("language", document.getElementById('explainLang').value);
-
     const r = await fetch(`${API}/api/explain-image`, {
       method: "POST",
       body: f
@@ -1030,7 +1177,6 @@ async function explainImage() {
   }, 'explainLoading', 'Image Explanation Failed');
 }
 
-// Download image helper function
 function downloadImage(base64Data, filename) {
   const link = document.createElement('a');
   link.href = 'data:image/png;base64,' + base64Data;
@@ -1040,32 +1186,6 @@ function downloadImage(base64Data, filename) {
   document.body.removeChild(link);
   showToast('success', 'Downloaded!', `Image saved as ${filename}`);
 }
-
-// Keyboard shortcuts
-document.addEventListener('keydown', (e) => {
-  // Ctrl/Cmd + Enter to submit in textareas
-  if((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
-    const activeTab = document.querySelector('.tab-content.active');
-    const textarea = activeTab.querySelector('textarea');
-    
-    if(textarea && textarea === document.activeElement) {
-      e.preventDefault();
-      const activeTabId = activeTab.id;
-      
-      switch(activeTabId) {
-        case 'query':
-          askQuery();
-          break;
-        case 'prompt':
-          generatePrompt();
-          break;
-        case 'visualize':
-          visualize();
-          break;
-      }
-    }
-  }
-});
 
 // Auto-resize textareas
 document.querySelectorAll('textarea').forEach(textarea => {
