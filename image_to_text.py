@@ -31,8 +31,9 @@ def ImageToText(image_bytes):
     Describe the image clearly.
     If the image contains a mathematical problem, solve it step by step.
     """
-
+    print("Response ...")
     response = model.generate_content([prompt, img])
+    print(response)
     return response.text.strip()
 
 
