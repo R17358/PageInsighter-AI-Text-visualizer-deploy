@@ -335,8 +335,13 @@ async def explain_image(
         if not is_image_file(content):
             raise HTTPException(status_code=400, detail="File is not a valid image")
 
+        print("before img to text")
         # Step 1: Image → Text (Vision)
         explanation = ImageToText(content)
+
+        print("\n After ing to text")
+
+        print(f"\n {explanation}")
 
         # Step 2: Text → Detailed HTML explanation
         detailed_prompt = f"""
