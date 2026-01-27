@@ -889,6 +889,7 @@ function showOutput(id, content) {
   el.style.display = 'block';
 }
 
+// Improved API call handler with proper error parsing
 async function handleApiCall(apiFunc, loadingId, errorTitle) {
   showLoading(loadingId);
   incrementStat('totalRequests');
@@ -897,14 +898,56 @@ async function handleApiCall(apiFunc, loadingId, errorTitle) {
     await apiFunc();
     showToast('success', 'Success!', 'Operation completed successfully');
   } catch(error) {
-    console.error(error);
-    showToast('error', errorTitle, error.message || 'Something went wrong. Please try again.');
+    console.error('API Error:', error);
+    
+    // Parse error message and type
+    let errorMessage = 'Something went wrong. Please try again.';
+    let toastType = 'error';
+    
+    // Check if it's a parsed API error
+    if (error.apiError) {
+      errorMessage = error.message;
+      toastType = error.type || 'error';
+    } 
+    // Fallback for network errors
+    else if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
+      errorMessage = 'Network error. Please check your internet connection.';
+      toastType = 'error';
+    }
+    else {
+      errorMessage = error.message || errorMessage;
+    }
+    
+    showToast(toastType, errorTitle, errorMessage);
   } finally {
     hideLoading(loadingId);
   }
 }
 
-// API Functions
+// Helper function to parse API responses and throw proper errors
+async function parseApiResponse(response) {
+  const data = await response.json();
+  
+  if (!response.ok || !data.success) {
+    const error = new Error(data.error || `HTTP ${response.status}`);
+    error.apiError = true;
+    
+    // Determine toast type based on status code
+    if (response.status === 429) {
+      error.type = 'warning';
+    } else if (response.status >= 400 && response.status < 500) {
+      error.type = 'warning';
+    } else {
+      error.type = 'error';
+    }
+    
+    throw error;
+  }
+  
+  return data;
+}
+
+// Updated API Functions
 async function askQuery() {
   const query = document.getElementById('queryText').value.trim();
   if(!query) {
@@ -922,9 +965,8 @@ async function askQuery() {
       })
     });
     
-    if(!r.ok) throw new Error(`HTTP ${r.status}`);
+    const d = await parseApiResponse(r);
     
-    const d = await r.json();
     let content = `<b>Answer:</b><br>${d.answer}`;
     if(d.translation) {
       content += `<hr><b>Translation:</b><br>${d.translation}`;
@@ -947,9 +989,7 @@ async function generatePrompt() {
       body: JSON.stringify({ text: text })
     });
     
-    if(!r.ok) throw new Error(`HTTP ${r.status}`);
-    
-    const d = await r.json();
+    const d = await parseApiResponse(r);
     showOutput('promptResult', `<b>Generated Prompt:</b><br>${d.prompt}`);
   }, 'promptLoading', 'Prompt Generation Failed');
 }
@@ -968,16 +1008,107 @@ async function visualize() {
       body: JSON.stringify({ query: text })
     });
     
-    if(!r.ok) throw new Error(`HTTP ${r.status}`);
+    const d = await parseApiResponse(r);
     
-    const d = await r.json();
     document.getElementById('visualImage').src = "data:image/png;base64," + d.image;
     document.getElementById('visualContainer').style.display = 'block';
     incrementStat('imagesGenerated');
   }, 'visualLoading', 'Visualization Failed');
 }
 
+async function processFile() {
+  const fileInput = document.getElementById('fileInput');
+  if(!fileInput.files[0]) {
+    showToast('warning', 'File Required', 'Please select a file to process');
+    return;
+  }
+  
+  await handleApiCall(async () => {
+    const f = new FormData();
+    f.append("file", fileInput.files[0]);
+    f.append("language", document.getElementById('fileLang').value);
+    f.append("explain", document.getElementById('explainCheck').checked);
+    f.append("generate_images", document.getElementById('imageCheck').checked);
+    
+    const r = await fetch(`${API}/api/process-file`, {
+      method: "POST",
+      body: f
+    });
+    
+    const d = await parseApiResponse(r);
+    
+    let content = '';
+    if(d.extracted_text) {
+      content += `<b>Extracted Text:</b><br>${d.extracted_text}<hr>`;
+    }
+    if(d.summary) {
+      content += `<b>Summary:</b><br>${d.summary}<hr>`;
+    }
+    if(d.translation) {
+      content += `<b>Translation:</b><br>${d.translation}`;
+    }
+    
+    showOutput('fileResult', content);
+    
+    const imagesContainer = document.getElementById('fileImages');
+    imagesContainer.innerHTML = '';
+    
+    if(d.images && d.images.length > 0) {
+      d.images.forEach((img, index) => {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'image-wrapper';
         
+        const imgElement = document.createElement('img');
+        imgElement.src = "data:image/png;base64," + img.image;
+        imgElement.className = 'generated';
+        imgElement.alt = `Generated image ${index + 1}`;
+        
+        const downloadBtn = document.createElement('button');
+        downloadBtn.className = 'download-btn';
+        downloadBtn.textContent = '⬇ Download';
+        downloadBtn.onclick = () => downloadImage(img.image, `pageinsighter-${index + 1}.png`);
+        
+        wrapper.appendChild(imgElement);
+        wrapper.appendChild(downloadBtn);
+        imagesContainer.appendChild(wrapper);
+        
+        incrementStat('imagesGenerated');
+      });
+    }
+    
+    incrementStat('filesProcessed');
+  }, 'fileLoading', 'File Processing Failed');
+}
+
+async function explainImage() {
+  const fileInput = document.getElementById('explainInput');
+  if(!fileInput.files[0]) {
+    showToast('warning', 'File Required', 'Please select an image to explain');
+    return;
+  }
+  
+  await handleApiCall(async () => {
+    const f = new FormData();
+    f.append("file", fileInput.files[0]);
+    f.append("language", document.getElementById('explainLang').value);
+    
+    const r = await fetch(`${API}/api/explain-image`, {
+      method: "POST",
+      body: f
+    });
+    
+    const d = await parseApiResponse(r);
+    
+    let content = `<b>Explanation:</b><br>${d.explanation}`;
+    if(d.translation) {
+      content += `<hr><b>Translation:</b><br>${d.translation}`;
+    }
+    
+    showOutput('explainResult', content);
+  }, 'explainLoading', 'Image Explanation Failed');
+}
+
+
         
 
 // Keyboard shortcuts
