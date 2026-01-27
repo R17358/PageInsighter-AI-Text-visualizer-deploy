@@ -4,6 +4,7 @@ import os
 from PIL import Image
 from dotenv import load_dotenv
 import google.generativeai as genai
+import io
 
 # Load env variables
 load_dotenv()
@@ -17,12 +18,14 @@ genai.configure(api_key=GEMINI_API_KEY)
 # Load model
 model = genai.GenerativeModel(MODEL_NAME)
 
-def ImageToText(image_path):
+def ImageToText(image_bytes):
     """
-    Takes an image path and returns text description.
-    If image contains a math problem, it solves it.
+    Accepts image bytes or BytesIO and returns extracted understanding
     """
-    img = Image.open(image_path)
+    if isinstance(image_bytes, bytes):
+        img = Image.open(io.BytesIO(image_bytes))
+    else:
+        img = Image.open(image_bytes)
 
     prompt = """
     Describe the image clearly.
@@ -30,7 +33,6 @@ def ImageToText(image_path):
     """
 
     response = model.generate_content([prompt, img])
-
     return response.text.strip()
 
 
