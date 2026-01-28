@@ -2,7 +2,7 @@
 
 # PageInsighter - AI Text Visualizer
 
-Live: https://text-visualizer-deploy.onrender.com
+Live: https://page-insighter.vercel.app
 
 ## Overview
 
