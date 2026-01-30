@@ -1,27 +1,33 @@
+"""
+PageInsighter API - Optimized FastAPI Application
+Text extraction, summarization, translation, and image generation from documents
+"""
+
 from fastapi import FastAPI, File, UploadFile, HTTPException, Form
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional, List
-import cv2
 import os
 import numpy as np
 import google.generativeai as genai
 from PIL import Image
 import PyPDF2
-import pytesseract
 import io
 import base64
 from dotenv import load_dotenv
 import traceback
+import json
 
-# Import your custom module
+# Import custom modules
 from otherImgGen import ImageGenerator as IG
 from image_to_text import ImageToText
 
+# Load environment variables
 load_dotenv()
 
-app = FastAPI(title="PageInsighter API", version="1.0.0")
+# Initialize FastAPI app
+app = FastAPI(title="PageInsighter API", version="2.0.0")
 
 # CORS middleware
 app.add_middleware(
@@ -32,72 +38,82 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Configuration
+# Configure Gemini API
 API_KEY = os.getenv("gemini_key")
-gemini_model = os.getenv("gemini_model")
+GEMINI_MODEL = os.getenv("gemini_model", "gemini-pro")
 genai.configure(api_key=API_KEY)
-model = genai.GenerativeModel(gemini_model)
+model = genai.GenerativeModel(GEMINI_MODEL)
 
-# Pydantic models
+
+# ============================================================================
+# PYDANTIC MODELS
+# ============================================================================
+
 class QueryRequest(BaseModel):
     query: str
     language: Optional[str] = "hindi"
+    style: Optional[str] = "realistic"  # FIX: Added style parameter
+
 
 class SummarizeRequest(BaseModel):
     text: str
     language: Optional[str] = "hindi"
     explain: bool = False
 
+
 class TranslateRequest(BaseModel):
     text: str
     language: str = "hindi"
 
+
 class ImagePromptRequest(BaseModel):
     text: str
 
-# Custom error response helper
-def error_response(message: str, error_type: str = "error", status_code: int = 500):
+
+# ============================================================================
+# ERROR HANDLING
+# ============================================================================
+
+def error_response(message: str, status_code: int = 500) -> JSONResponse:
     """Generate consistent error responses"""
     return JSONResponse(
         status_code=status_code,
         content={
             "success": False,
-            "error": message,
-            "error_type": error_type
+            "error": message
         }
     )
 
-def recognize_text(image_array):
-    try:
-        # Convert numpy array back to PIL Image
-        image = Image.fromarray(image_array)
 
-        prompt = """
-        Extract all text from this image exactly as it appears.
-        Do not summarize.
-        Do not explain.
-        Preserve line breaks, symbols, and formatting as much as possible.
-        """
-
-        response = model.generate_content(
-            [
-                prompt,
-                image
-            ]
+def handle_gemini_error(e: Exception):
+    """Centralized error handling for Gemini API"""
+    error_msg = str(e).lower()
+    
+    if "429" in error_msg or "quota" in error_msg or "rate limit" in error_msg:
+        raise HTTPException(
+            status_code=429,
+            detail="API quota exceeded. Please try again later or check your Gemini API limits."
         )
-
-        if not response or not response.text:
-            raise ValueError("No text detected in image")
-
-        return response.text.strip()
-
-    except Exception as e:
-        print(f"OCR Error: {str(e)}")
-        # You can either raise or return, raising is better for APIs
+    elif "401" in error_msg or "unauthorized" in error_msg:
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid API key. Please check your Gemini API configuration."
+        )
+    elif "400" in error_msg:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid request to Gemini API. Please try rephrasing your query."
+        )
+    else:
         raise HTTPException(
             status_code=500,
-            detail="OCR failed. Unable to extract text from image."
+            detail="AI service temporarily unavailable. Please try again."
         )
+
+
+# ============================================================================
+# FILE UTILITIES
+# ============================================================================
 
 def is_image_file(file_content: bytes) -> bool:
     """Check if file is a valid image"""
@@ -108,108 +124,242 @@ def is_image_file(file_content: bytes) -> bool:
     except:
         return False
 
+
 def read_pdf(file_content: bytes) -> str:
     """Extract text from PDF"""
     try:
         reader = PyPDF2.PdfReader(io.BytesIO(file_content))
         text = ''
         for page in reader.pages:
-            text += page.extract_text()
-        return text
+            page_text = page.extract_text()
+            if page_text:
+                text += page_text + '\n'
+        return text.strip()
     except Exception as e:
         print(f"PDF Error: {str(e)}")
-        raise HTTPException(status_code=500, detail="Failed to extract text from PDF. File may be corrupted.")
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to extract text from PDF. File may be corrupted."
+        )
+
+
+def image_to_base64(image: Image.Image) -> str:
+    """Convert PIL Image to base64 string"""
+    try:
+        buffered = io.BytesIO()
+        # Convert RGBA to RGB if necessary
+        if image.mode == 'RGBA':
+            image = image.convert('RGB')
+        image.save(buffered, format="JPEG", quality=95)
+        img_bytes = buffered.getvalue()
+        return base64.b64encode(img_bytes).decode('utf-8')
+    except Exception as e:
+        print(f"Image conversion error: {str(e)}")
+        raise
+
+
+def bytes_to_base64(image_bytes: bytes) -> str:
+    """Convert image bytes to base64 string"""
+    try:
+        # Try to open and verify it's a valid image
+        img = Image.open(io.BytesIO(image_bytes))
+        if img.mode == 'RGBA':
+            img = img.convert('RGB')
+        
+        buffered = io.BytesIO()
+        img.save(buffered, format="JPEG", quality=95)
+        return base64.b64encode(buffered.getvalue()).decode('utf-8')
+    except Exception as e:
+        print(f"Bytes conversion error: {str(e)}")
+        # Fallback: just encode the bytes directly
+        return base64.b64encode(image_bytes).decode('utf-8')
+
+
+# ============================================================================
+# GEMINI API FUNCTIONS
+# ============================================================================
+
+def call_gemini_api(prompt: str, image: Optional[Image.Image] = None) -> str:
+    """Unified Gemini API call with error handling"""
+    try:
+        if image:
+            response = model.generate_content([prompt, image])
+        else:
+            response = model.generate_content(prompt)
+        
+        if not response or not response.text:
+            raise ValueError("No response from Gemini API")
+        
+        return response.text.strip()
+    
+    except Exception as e:
+        print(f"Gemini API Error: {str(e)}")
+        handle_gemini_error(e)
+
+
+def extract_text_from_image(image: Image.Image) -> str:
+    """Extract text from image using Gemini Vision"""
+    prompt = """
+    Extract all text from this image exactly as it appears.
+    Do not summarize or explain.
+    Preserve line breaks, symbols, and formatting as much as possible.
+    """
+    
+    text = call_gemini_api(prompt, image)
+    
+    if not text:
+        raise HTTPException(
+            status_code=400,
+            detail="No text detected in image"
+        )
+    
+    return text
+
 
 def generate_answer(query: str) -> str:
     """Generate answer using Gemini"""
-    try:
-        prompt = f"""Please provide a detailed response to the following query in HTML format: {query}. 
+    prompt = f"""Please provide a detailed response to the following query in HTML format: {query}. 
 The response should use proper inline CSS styles for formatting and be well-structured. 
 
 Ensure the HTML is visually appealing and easy to read. 
 
 Additionally, implement the following dynamic styling for readability:
-- set the font color to dark (e.g., `#000000`),
-- set the background color light (e.g., `#FFFFFF`, `#F0F0F0`), 
-- set the background border-radius of 8px.
+- Font color: dark (#000000)
+- Background color: light (#FFFFFF or #F0F0F0)
+- Border-radius: 8px
+- Padding: 16px
 
 This ensures that the text is always readable regardless of the background color."""
-        
-        response = model.generate_content(prompt)
-        return response.candidates[0].content.parts[0].text
-    except Exception as e:
-        error_msg = str(e)
-        print(f"Gemini Error: {error_msg}")
-        
-        if "429" in error_msg or "quota" in error_msg.lower() or "rate limit" in error_msg.lower():
-            raise HTTPException(status_code=429, detail="API quota exceeded. Please try again later or check your Gemini API limits.")
-        elif "401" in error_msg or "unauthorized" in error_msg.lower():
-            raise HTTPException(status_code=401, detail="Invalid API key. Please check your Gemini API configuration.")
-        elif "400" in error_msg:
-            raise HTTPException(status_code=400, detail="Invalid request to Gemini API. Please try rephrasing your query.")
-        else:
-            raise HTTPException(status_code=500, detail="AI service temporarily unavailable. Please try again.")
+    
+    return call_gemini_api(prompt)
 
-def summarize_text(text: str, explain: bool = False) -> str:
+
+def process_text(text: str, explain: bool = False) -> str:
     """Summarize or explain text"""
-    try:
-        if explain:
-            prompt = f"""Determine if the input is a mathematical problem or descriptive text. 
+    if explain:
+        prompt = f"""Determine if the input is a mathematical problem or descriptive text. 
 - If it is a mathematical problem, explain the steps clearly, provide detailed calculations, and include the final answer. 
-- If it is descriptive text, provide summary of {text}.
+- If it is descriptive text, provide a comprehensive explanation with detailed analysis.
 
 Write everything in HTML format with inline styles for rendering. 
 Ensure proper formatting for clarity and readability, using appropriate headings, paragraphs, and lists where necessary. 
 The response should be visually appealing, with attention to font size, color, and layout to ensure ease of understanding based on the type of input. 
 
 Additionally, implement the following dynamic styling for readability:
-- set the font color to dark (e.g., `#000000`).
-- set the background color light (e.g., `#FFFFFF`, `#F0F0F0`)
-- set the background border-radius of 8px.
+- Font color: dark (#000000)
+- Background color: light (#FFFFFF or #F0F0F0)
+- Border-radius: 8px
+- Padding: 16px
 
-The input to be analyzed is: {text}."""
-        else:
-            prompt = f"Summarize the following text: {text}"
-        
-        response = model.generate_content(prompt)
-        return response.candidates[0].content.parts[0].text
-    except Exception as e:
-        error_msg = str(e)
-        print(f"Summarization Error: {error_msg}")
-        
-        if "429" in error_msg or "quota" in error_msg.lower():
-            raise HTTPException(status_code=429, detail="API quota exceeded. Please try again later.")
-        else:
-            raise HTTPException(status_code=500, detail="Failed to generate summary. Please try again.")
+The input to be analyzed is: {text}"""
+    else:
+        prompt = f"Summarize the following text concisely, focusing on key points and main ideas:\n\n{text}"
+    
+    return call_gemini_api(prompt)
 
-def generate_image_prompt(text: str) -> str:
-    """Generate prompt for image generation"""
-    try:
-        response = model.generate_content(
-            f"Generate a detailed prompt for image generation for the given text: {text}. Only generate the single best prompt and nothing else."
-        )
-        return response.candidates[0].content.parts[0].text
-    except Exception as e:
-        print(f"Prompt Generation Error: {str(e)}")
-        raise HTTPException(status_code=500, detail="Failed to generate image prompt.")
 
-def translate_text(text: str, language: str = 'hindi') -> str:
+def translate_text(text: str, language: str) -> str:
     """Translate text to specified language"""
-    try:
-        response = model.generate_content(
-            f"Translate the following {text} into {language} and use simple words."
-        )
-        return response.candidates[0].content.parts[0].text
-    except Exception as e:
-        print(f"Translation Error: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to translate to {language}.")
+    prompt = f"Translate the following text into {language} using simple, clear words:\n\n{text}"
+    return call_gemini_api(prompt)
 
-# API Routes
+
+def generate_image_prompts(text: str, count: int = 4) -> List[str]:
+    """Generate multiple image generation prompts"""
+    prompt = f"""Generate {count} diverse, detailed image generation prompts based on the following text.
+Each prompt should:
+- Be visually descriptive and unique
+- Capture different aspects or key concepts from the content
+- Be optimized for 3D ultra HD vibrant image generation
+- Be 15-25 words long
+- Focus on visualizing the main ideas, not just decorative images
+
+Return ONLY a JSON array of strings, no additional text or markdown.
+
+Text: {text}"""
+    
+    response = call_gemini_api(prompt)
+    
+    # Clean response
+    cleaned = response.strip()
+    if cleaned.startswith("```"):
+        lines = cleaned.split("\n")
+        cleaned = "\n".join(lines[1:-1]) if len(lines) > 2 else cleaned
+        cleaned = cleaned.replace("```json", "").replace("```", "").strip()
+    
+    try:
+        prompts = json.loads(cleaned)
+        if isinstance(prompts, list):
+            return prompts[:count]
+        else:
+            raise ValueError("Response is not a list")
+    except Exception as e:
+        print(f"JSON parsing error: {e}, attempting fallback")
+        # Fallback: generate one prompt
+        single_prompt = f"A detailed, vibrant 3D visualization representing: {text[:200]}"
+        return [single_prompt]
+
+
+# ============================================================================
+# IMAGE GENERATION
+# ============================================================================
+
+async def generate_images_from_prompts(prompts: List[str], style: str = "realistic") -> List[dict]:
+    """Generate images from prompts with specified style"""
+    images = []
+    print(f"\nGenerating {len(prompts)} images with style: {style}...")
+    
+    for i, base_prompt in enumerate(prompts):
+        try:
+            # FIX: Include the style in the enhanced prompt
+            enhanced_prompt = f"3D ultra HD vibrant, {style}, Fantasy and academic {base_prompt}"
+            print(f"  [{i+1}/{len(prompts)}] Generating: {enhanced_prompt[:60]}...")
+            
+            img_bytes, flag = IG(enhanced_prompt)
+            
+            if flag and img_bytes:
+                # Convert bytes to base64
+                img_base64 = bytes_to_base64(img_bytes)
+                
+                images.append({
+                    "prompt": base_prompt,
+                    "image": img_base64,
+                    "index": i + 1
+                })
+                print(f"  ✓ Image {i+1} generated successfully")
+            else:
+                print(f"  ✗ Image {i+1} generation failed")
+                
+        except Exception as img_error:
+            print(f"  ✗ Image {i+1} error: {img_error}")
+            # Continue with other images
+    
+    print(f"Successfully generated {len(images)}/{len(prompts)} images\n")
+    return images
+
+
+# ============================================================================
+# API ROUTES
+# ============================================================================
 
 @app.get("/")
 async def root():
     """Health check endpoint"""
-    return {"message": "PageInsighter API is running", "version": "1.0.0"}
+    return {
+        "message": "PageInsighter API is running",
+        "version": "2.0.0",
+        "status": "healthy",
+        "endpoints": {
+            "query": "/api/query",
+            "ocr": "/api/ocr",
+            "summarize": "/api/summarize",
+            "translate": "/api/translate",
+            "visualize": "/api/visualize",
+            "process_file": "/api/process-file",
+            "explain_image": "/api/explain-image"
+        }
+    }
+
 
 @app.post("/api/query")
 async def answer_query(request: QueryRequest):
@@ -232,66 +382,21 @@ async def answer_query(request: QueryRequest):
         print(f"Unexpected error in answer_query: {traceback.format_exc()}")
         return error_response("An unexpected error occurred. Please try again.", status_code=500)
 
-@app.post("/api/generate-image-prompt")
-async def create_image_prompt(request: ImagePromptRequest):
-    """Generate image generation prompt from text"""
-    try:
-        prompt = generate_image_prompt(request.text)
-        return JSONResponse({
-            "success": True,
-            "prompt": prompt
-        })
-    except HTTPException as he:
-        return error_response(he.detail, status_code=he.status_code)
-    except Exception as e:
-        print(f"Unexpected error in create_image_prompt: {traceback.format_exc()}")
-        return error_response("Failed to generate image prompt.", status_code=500)
-
-@app.post("/api/visualize")
-async def visualize_query(request: QueryRequest):
-    """Generate image based on query"""
-    try:
-        img_prompt = generate_image_prompt(request.query)
-        enhanced_prompt = f"3D ultra HD vibrant {img_prompt}"
-        
-        img, flag = IG(enhanced_prompt)
-        
-        if not flag:
-            return error_response("Image generation failed. Please try again with a different prompt.", status_code=500)
-        
-        # Convert PIL image to base64
-        buffered = io.BytesIO()
-        img.save(buffered, format="PNG")
-        img_base64 = base64.b64encode(buffered.getvalue()).decode()
-        
-        return JSONResponse({
-            "success": True,
-            "image": img_base64,
-            "prompt": img_prompt
-        })
-    except HTTPException as he:
-        return error_response(he.detail, status_code=he.status_code)
-    except Exception as e:
-        print(f"Unexpected error in visualize_query: {traceback.format_exc()}")
-        return error_response("Image generation service unavailable.", status_code=500)
 
 @app.post("/api/ocr")
-async def extract_text(file: UploadFile = File(...)):
+async def extract_text_endpoint(file: UploadFile = File(...)):
     """Extract text from image using OCR"""
     try:
         content = await file.read()
         
         if not is_image_file(content):
-            return error_response("Invalid image file. Please upload a valid image (PNG, JPG, JPEG).", status_code=400)
+            return error_response(
+                "Invalid image file. Please upload a valid image (PNG, JPG, JPEG).",
+                status_code=400
+            )
         
-        # Convert to numpy array
         image = Image.open(io.BytesIO(content))
-        image_array = np.array(image)
-        
-        text = recognize_text(image_array)
-        
-        if not text:
-            return error_response("No text found in image. Please try a clearer image.", status_code=400)
+        text = extract_text_from_image(image)
         
         return JSONResponse({
             "success": True,
@@ -303,11 +408,12 @@ async def extract_text(file: UploadFile = File(...)):
         print(f"Unexpected error in extract_text: {traceback.format_exc()}")
         return error_response("Failed to extract text from image.", status_code=500)
 
+
 @app.post("/api/summarize")
 async def summarize(request: SummarizeRequest):
     """Summarize or explain text"""
     try:
-        summary = summarize_text(request.text, request.explain)
+        summary = process_text(request.text, request.explain)
         translation = None
         
         if request.language and request.language.lower() != "none":
@@ -323,6 +429,7 @@ async def summarize(request: SummarizeRequest):
     except Exception as e:
         print(f"Unexpected error in summarize: {traceback.format_exc()}")
         return error_response("Failed to process text.", status_code=500)
+
 
 @app.post("/api/translate")
 async def translate(request: TranslateRequest):
@@ -341,84 +448,139 @@ async def translate(request: TranslateRequest):
         print(f"Unexpected error in translate: {traceback.format_exc()}")
         return error_response("Translation service unavailable.", status_code=500)
 
+
+@app.post("/api/visualize")
+async def visualize_query(request: QueryRequest):
+    """Generate image based on query with specified style"""
+    try:
+        # FIX: Get style from request (defaults to "realistic" if not provided)
+        style = request.style if request.style else "realistic"
+        
+        # Generate single image prompt
+        prompts = generate_image_prompts(request.query, count=1)
+        img_prompt = prompts[0] if prompts else request.query
+        
+        # FIX: Include style in the enhanced prompt
+        enhanced_prompt = f"3D ultra HD vibrant, {style}, {img_prompt}"
+        print(f"Generating visualization with style '{style}': {enhanced_prompt}")
+        
+        img_bytes, flag = IG(enhanced_prompt)
+        
+        if not flag or not img_bytes:
+            return error_response(
+                "Image generation failed. Please try again with a different prompt.",
+                status_code=500
+            )
+        
+        # Convert to base64
+        img_base64 = bytes_to_base64(img_bytes)
+        
+        return JSONResponse({
+            "success": True,
+            "image": img_base64,
+            "prompt": img_prompt,
+            "style": style  # FIX: Return the style used
+        })
+    except HTTPException as he:
+        return error_response(he.detail, status_code=he.status_code)
+    except Exception as e:
+        print(f"Unexpected error in visualize_query: {traceback.format_exc()}")
+        return error_response("Image generation service unavailable.", status_code=500)
+
+
 @app.post("/api/process-file")
 async def process_file(
     file: UploadFile = File(...),
     language: str = Form("hindi"),
     explain: bool = Form(False),
-    generate_images: bool = Form(True)
+    generate_images: bool = Form(False),
+    style: str = Form("realistic")  # FIX: Added style parameter
 ):
-    """Process uploaded file (image or PDF) - extract, summarize, translate, and optionally visualize"""
+    """
+    Process uploaded file (image or PDF) - extract, summarize, translate, and optionally visualize
+    
+    Logic:
+    - explain=True: Returns explanation (HTML formatted), translation (if language != none)
+    - generate_images=True: Returns summary and 4 generated images with specified style
+    - Both True: Returns explanation, translation, image prompts, and 4 generated images
+    """
     try:
         content = await file.read()
         
-        # Determine file type and extract text
+        # Step 1: Extract text from file
         if is_image_file(content):
             image = Image.open(io.BytesIO(content))
-            image_array = np.array(image)
-            extracted_text = recognize_text(image_array)
+            extracted_text = extract_text_from_image(image)
         else:
             extracted_text = read_pdf(content)
         
         if not extracted_text:
-            return error_response("No text could be extracted. Please try a different file.", status_code=400)
+            return error_response(
+                "No text could be extracted from file",
+                status_code=400
+            )
         
-        # Summarize
-        summary = summarize_text(extracted_text, explain)
+        # Step 2: Process text (summarize or explain)
+        summary = process_text(extracted_text, explain)
         
-        # Translate
+        # Step 3: Translate if requested
         translation = None
         if language and language.lower() != "none":
-            try:
-                translation = translate_text(summary, language)
-            except:
-                print("Translation failed, continuing without translation")
+            translation = translate_text(summary, language)
         
-        # Generate images
+        # Step 4: Generate images if requested
+        image_prompts = []
         images = []
-        if generate_images and not explain:
-            try:
-                for i in range(4):
-                    img_prompt = generate_image_prompt(summary)
-                    enhanced_prompt = f"3D ultra HD vibrant {img_prompt}"
-                    img, flag = IG(enhanced_prompt)
-                    
-                    if flag:
-                        buffered = io.BytesIO()
-                        img.save(buffered, format="PNG")
-                        img_base64 = base64.b64encode(buffered.getvalue()).decode()
-                        
-                        images.append({
-                            "prompt": img_prompt,
-                            "image": img_base64
-                        })
-            except Exception as img_error:
-                print(f"Image generation failed: {img_error}")
-                # Continue without images
         
-        return JSONResponse({
+        if generate_images:
+            # Generate prompts based on summary
+            image_prompts = generate_image_prompts(summary, count=4)
+            
+            # FIX: Pass style parameter to image generation
+            images = await generate_images_from_prompts(image_prompts, style)
+        
+        # Build response based on flags
+        response_data = {
             "success": True,
             "extracted_text": extracted_text,
-            "summary": summary,
-            "translation": translation,
-            "images": images
-        })
+            "summary": summary
+        }
+        
+        if translation:
+            response_data["translation"] = translation
+        
+        if generate_images:
+            response_data["image_prompts"] = image_prompts
+            response_data["images"] = images
+            response_data["images_generated"] = len(images)
+            response_data["style"] = style  # FIX: Return the style used
+        
+        return JSONResponse(response_data)
+        
     except HTTPException as he:
         return error_response(he.detail, status_code=he.status_code)
     except Exception as e:
         print(f"Unexpected error in process_file: {traceback.format_exc()}")
         return error_response("Failed to process file. Please try again.", status_code=500)
 
+
 @app.post("/api/explain-image")
 async def explain_image(
     file: UploadFile = File(...),
     language: str = Form("hindi")
 ):
+    """
+    Explain what's in an image using vision model
+    Returns detailed HTML explanation and optional translation
+    """
     try:
         content = await file.read()
 
         if not is_image_file(content):
-            return error_response("Invalid image file. Please upload PNG, JPG, or JPEG.", status_code=400)
+            return error_response(
+                "Invalid image file. Please upload PNG, JPG, or JPEG.",
+                status_code=400
+            )
 
         print("Starting image-to-text conversion...")
         
@@ -428,7 +590,10 @@ async def explain_image(
             print(f"Image to text completed: {explanation[:100]}...")
         except Exception as vision_error:
             print(f"Vision API error: {vision_error}")
-            return error_response("Failed to analyze image. Vision service may be unavailable.", status_code=500)
+            return error_response(
+                "Failed to analyze image. Vision service may be unavailable.",
+                status_code=500
+            )
 
         # Step 2: Text → Detailed HTML explanation
         detailed_prompt = f"""
@@ -445,30 +610,22 @@ Rules:
 - Text color: #000000
 - Border-radius: 8px
 - Padding: 16px
-- Use <h2>, <p>, <ul>, <li>, <b>
+- Use <h2>, <p>, <ul>, <li>, <b> for structure
 
 Input:
 {explanation}
 """
 
-        try:
-            detailed_explanation = model.generate_content(detailed_prompt).text
-        except Exception as gemini_error:
-            error_msg = str(gemini_error)
-            print(f"Gemini explanation error: {error_msg}")
-            
-            if "429" in error_msg or "quota" in error_msg.lower():
-                return error_response("API quota exceeded. Please try again later.", status_code=429)
-            else:
-                return error_response("AI explanation service unavailable.", status_code=500)
+        detailed_explanation = call_gemini_api(detailed_prompt)
 
         # Step 3: Optional Translation
         translation = None
         if language and language.lower() != "none":
             try:
                 translation = translate_text(detailed_explanation, language)
-            except:
-                print("Translation failed, continuing without translation")
+            except Exception as trans_error:
+                print(f"Translation failed: {trans_error}")
+                # Continue without translation
 
         return JSONResponse({
             "success": True,
@@ -482,355 +639,11 @@ Input:
         print(f"Unexpected error in explain_image: {traceback.format_exc()}")
         return error_response("Failed to explain image. Please try again.", status_code=500)
 
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
 
-# Configuration
-API_KEY = os.getenv("gemini_key")
-gemini_model = os.getenv("gemini_model")
-genai.configure(api_key=API_KEY)
-model = genai.GenerativeModel(gemini_model)
-
-# Pydantic models
-class QueryRequest(BaseModel):
-    query: str
-    language: Optional[str] = "hindi"
-
-class SummarizeRequest(BaseModel):
-    text: str
-    language: Optional[str] = "hindi"
-    explain: bool = False
-
-class TranslateRequest(BaseModel):
-    text: str
-    language: str = "hindi"
-
-class ImagePromptRequest(BaseModel):
-    text: str
-
-# Helper functions
-def recognize_text(image_array: np.ndarray) -> str:
-    """Extract text from image using OCR"""
-    try:
-        gray = cv2.cvtColor(image_array, cv2.COLOR_BGR2GRAY)
-        text = pytesseract.image_to_string(gray, lang='hin+eng')
-        return text.strip()
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"OCR Error: {str(e)}")
-
-def is_image_file(file_content: bytes) -> bool:
-    """Check if file is a valid image"""
-    try:
-        img = Image.open(io.BytesIO(file_content))
-        img.verify()
-        return True
-    except:
-        return False
-
-def read_pdf(file_content: bytes) -> str:
-    """Extract text from PDF"""
-    try:
-        reader = PyPDF2.PdfReader(io.BytesIO(file_content))
-        text = ''
-        for page in reader.pages:
-            text += page.extract_text()
-        return text
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"PDF Error: {str(e)}")
-
-def generate_answer(query: str) -> str:
-    """Generate answer using Gemini"""
-    try:
-        prompt = f"""Please provide a detailed response to the following query in HTML format: {query}. 
-The response should use proper inline CSS styles for formatting and be well-structured. 
-
-Ensure the HTML is visually appealing and easy to read. 
-
-Additionally, implement the following dynamic styling for readability:
-- set the font color to dark (e.g., `#000000`),
-- set the background color light (e.g., `#FFFFFF`, `#F0F0F0`), 
-- set the background border-radius of 8px.
-
-This ensures that the text is always readable regardless of the background color."""
-        
-        response = model.generate_content(prompt)
-        return response.candidates[0].content.parts[0].text
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Gemini Error: {str(e)}")
-
-def summarize_text(text: str, explain: bool = False) -> str:
-    """Summarize or explain text"""
-    try:
-        if explain:
-            prompt = f"""Determine if the input is a mathematical problem or descriptive text. 
-- If it is a mathematical problem, explain the steps clearly, provide detailed calculations, and include the final answer. 
-- If it is descriptive text, provide summary of {text}.
-
-Write everything in HTML format with inline styles for rendering. 
-Ensure proper formatting for clarity and readability, using appropriate headings, paragraphs, and lists where necessary. 
-The response should be visually appealing, with attention to font size, color, and layout to ensure ease of understanding based on the type of input. 
-
-Additionally, implement the following dynamic styling for readability:
-- set the font color to dark (e.g., `#000000`).
-- set the background color light (e.g., `#FFFFFF`, `#F0F0F0`)
-- set the background border-radius of 8px.
-
-The input to be analyzed is: {text}."""
-        else:
-            prompt = f"Summarize the following text: {text}"
-        
-        response = model.generate_content(prompt)
-        return response.candidates[0].content.parts[0].text
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Summarization Error: {str(e)}")
-
-def generate_image_prompt(text: str) -> str:
-    """Generate prompt for image generation"""
-    try:
-        response = model.generate_content(
-            f"Generate a detailed prompt for image generation for the given text: {text}. Only generate the single best prompt and nothing else."
-        )
-        return response.candidates[0].content.parts[0].text
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Prompt Generation Error: {str(e)}")
-
-def translate_text(text: str, language: str = 'hindi') -> str:
-    """Translate text to specified language"""
-    try:
-        response = model.generate_content(
-            f"Translate the following {text} into {language} and use simple words."
-        )
-        return response.candidates[0].content.parts[0].text
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Translation Error: {str(e)}")
-
-# API Routes
-
-@app.get("/")
-async def root():
-    """Health check endpoint"""
-    return {"message": "PageInsighter API is running", "version": "1.0.0"}
-
-@app.post("/api/query")
-async def answer_query(request: QueryRequest):
-    """Answer a general query using Gemini"""
-    try:
-        answer = generate_answer(request.query)
-        translation = None
-        
-        if request.language and request.language.lower() != "none":
-            translation = translate_text(answer, request.language)
-        
-        return JSONResponse({
-            "success": True,
-            "answer": answer,
-            "translation": translation
-        })
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.post("/api/generate-image-prompt")
-async def create_image_prompt(request: ImagePromptRequest):
-    """Generate image generation prompt from text"""
-    try:
-        prompt = generate_image_prompt(request.text)
-        return JSONResponse({
-            "success": True,
-            "prompt": prompt
-        })
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.post("/api/visualize")
-async def visualize_query(request: QueryRequest):
-    """Generate image based on query"""
-    try:
-        img_prompt = generate_image_prompt(request.query)
-        enhanced_prompt = f"3D ultra HD vibrant {img_prompt}"
-        
-        img, flag = IG(enhanced_prompt)
-        
-        # Convert PIL image to base64
-        buffered = io.BytesIO()
-        img.save(buffered, format="PNG")
-        img_base64 = base64.b64encode(buffered.getvalue()).decode()
-        
-        return JSONResponse({
-            "success": True,
-            "image": img_base64,
-            "prompt": img_prompt
-        })
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.post("/api/ocr")
-async def extract_text(file: UploadFile = File(...)):
-    """Extract text from image using OCR"""
-    try:
-        content = await file.read()
-        
-        if not is_image_file(content):
-            raise HTTPException(status_code=400, detail="File is not a valid image")
-        
-        # Convert to numpy array
-        image = Image.open(io.BytesIO(content))
-        image_array = np.array(image)
-        
-        text = recognize_text(image_array)
-        
-        return JSONResponse({
-            "success": True,
-            "text": text
-        })
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.post("/api/summarize")
-async def summarize(request: SummarizeRequest):
-    """Summarize or explain text"""
-    try:
-        summary = summarize_text(request.text, request.explain)
-        translation = None
-        
-        if request.language and request.language.lower() != "none":
-            translation = translate_text(summary, request.language)
-        
-        return JSONResponse({
-            "success": True,
-            "summary": summary,
-            "translation": translation
-        })
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.post("/api/translate")
-async def translate(request: TranslateRequest):
-    """Translate text to specified language"""
-    try:
-        translation = translate_text(request.text, request.language)
-        
-        return JSONResponse({
-            "success": True,
-            "translation": translation,
-            "language": request.language
-        })
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.post("/api/process-file")
-async def process_file(
-    file: UploadFile = File(...),
-    language: str = Form("hindi"),
-    explain: bool = Form(False),
-    generate_images: bool = Form(True)
-):
-    """Process uploaded file (image or PDF) - extract, summarize, translate, and optionally visualize"""
-    try:
-        content = await file.read()
-        
-        # Determine file type and extract text
-        if is_image_file(content):
-            image = Image.open(io.BytesIO(content))
-            image_array = np.array(image)
-            extracted_text = recognize_text(image_array)
-        else:
-            extracted_text = read_pdf(content)
-        
-        if not extracted_text:
-            raise HTTPException(status_code=400, detail="No text could be extracted from file")
-        
-        # Summarize
-        summary = summarize_text(extracted_text, explain)
-        
-        # Translate
-        translation = None
-        if language and language.lower() != "none":
-            translation = translate_text(summary, language)
-        
-        # Generate images
-        images = []
-        if generate_images and not explain:
-            for i in range(4):
-                img_prompt = generate_image_prompt(summary)
-                enhanced_prompt = f"3D ultra HD vibrant {img_prompt}"
-                img, flag = IG(enhanced_prompt)
-                
-                buffered = io.BytesIO()
-                img.save(buffered, format="PNG")
-                img_base64 = base64.b64encode(buffered.getvalue()).decode()
-                
-                images.append({
-                    "prompt": img_prompt,
-                    "image": img_base64
-                })
-        
-        return JSONResponse({
-            "success": True,
-            "extracted_text": extracted_text,
-            "summary": summary,
-            "translation": translation,
-            "images": images
-        })
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.post("/api/explain-image")
-async def explain_image(
-    file: UploadFile = File(...),
-    language: str = Form("hindi")
-):
-    try:
-        content = await file.read()
-
-        if not is_image_file(content):
-            raise HTTPException(status_code=400, detail="File is not a valid image")
-
-        print("before img to text")
-        # Step 1: Image → Text (Vision)
-        explanation = ImageToText(content)
-
-        print("\n After ing to text")
-
-        print(f"\n {explanation}")
-
-        # Step 2: Text → Detailed HTML explanation
-        detailed_prompt = f"""
-You are an intelligent tutor.
-
-Determine whether the input below is:
-1) A mathematical problem → explain step-by-step with calculations and final answer
-2) Descriptive/visual content → explain clearly and structurally
-
-Rules:
-- Output MUST be valid HTML
-- Use inline CSS
-- Background: #F5F5F5
-- Text color: #000000
-- Border-radius: 8px
-- Padding: 16px
-- Use <h2>, <p>, <ul>, <li>, <b>
-
-Input:
-{explanation}
-"""
-
-        detailed_explanation = model.generate_content(detailed_prompt).text
-
-        # Step 3: Optional Translation
-        translation = None
-        if language and language.lower() != "none":
-            translation = translate_text(detailed_explanation, language)
-
-        return JSONResponse({
-            "success": True,
-            "explanation": detailed_explanation,
-            "translation": translation
-        })
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+# ============================================================================
+# MAIN
+# ============================================================================
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=8000, reload=True)
