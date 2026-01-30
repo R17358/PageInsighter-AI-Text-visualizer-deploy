@@ -22,6 +22,55 @@ else:
     print("Warning: gemini_key not found in environment variables")
 
 
+def explain_image_single_call(image_bytes: bytes, language: str):
+    image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+
+    model = genai.GenerativeModel(GEMINI_MODEL)
+
+    prompt = f"""
+You are an intelligent tutor and visual analyst.
+
+TASK:
+Analyze the image and generate a COMPLETE explanation.
+
+STEP 1: Decide content type
+- If image contains a mathematical problem → explain step-by-step and give final answer
+- If descriptive/visual → explain clearly and structurally
+- If document/page → extract text accurately and explain
+
+STEP 2: Language handling
+- Output language: {language}
+- If language is "none" or "english", respond in English
+- Otherwise translate the final explanation into the selected language
+
+STEP 3: Output formatting (STRICT)
+- Output MUST be valid HTML ONLY
+- Use inline CSS
+- Background: #F5F5F5
+- Text color: #000000
+- Border-radius: 8px
+- Padding: 16px
+- Use:
+  <h2>, <p>, <ul>, <li>, <b>
+
+DO NOT:
+- Add markdown
+- Add explanations outside HTML
+- Mention that you translated it
+
+ONLY RETURN HTML.
+
+Now analyze the image.
+"""
+
+    response = model.generate_content([prompt, image])
+
+    if not response or not response.text:
+        raise Exception("Empty response from Gemini")
+
+    return response.text.strip()
+
+
 def ImageToText(image_data):
     """
     Convert image to descriptive text using Gemini Vision
@@ -49,7 +98,7 @@ def ImageToText(image_data):
             image = image.convert('RGB')
         
         # Create vision model
-        model = genai.GenerativeModel('gemini-1.5-flash')
+        model = genai.GenerativeModel(GEMINI_MODEL)
         
         # Detailed prompt for comprehensive analysis
         prompt = """

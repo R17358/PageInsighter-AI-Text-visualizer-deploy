@@ -21,7 +21,7 @@ import json
 
 # Import custom modules
 from otherImgGen import ImageGenerator as IG
-from image_to_text import ImageToText
+from image_to_text import ImageToText, explain_image_single_call
 
 # Load environment variables
 load_dotenv()
@@ -337,6 +337,90 @@ async def generate_images_from_prompts(prompts: List[str], style: str = "realist
     print(f"Successfully generated {len(images)}/{len(prompts)} images\n")
     return images
 
+def answer_query_single_call(query: str, language: str | None):
+    model = genai.GenerativeModel(GEMINI_MODEL)
+
+    lang = (language or "english").lower()
+
+    # 🚫 No translation case
+    if lang in ["none", "no", "no translation", "english"]:
+        prompt = f"""
+You are an intelligent tutor.
+
+TASK:
+Answer the user's question accurately and clearly.
+
+CONTENT RULES:
+- If the question is mathematical or logical → explain step-by-step and give final answer
+- If conceptual or theoretical → explain clearly with structure
+- If short factual → answer concisely
+
+OUTPUT FORMAT (STRICT):
+- Output MUST be valid HTML ONLY
+- Use inline CSS
+- Background: #F5F5F5
+- Text color: #000000
+- Border-radius: 8px
+- Padding: 16px
+- Use:
+  <h2>, <p>, <ul>, <li>, <b>
+
+DO NOT:
+- Add markdown
+- Add text outside HTML
+- Mention translation
+
+ONLY RETURN HTML.
+
+User Question:
+{query}
+"""
+    else:
+        # 🌍 Translation required
+        prompt = f"""
+You are an intelligent tutor.
+
+TASK:
+Answer the user's question accurately and clearly.
+
+LANGUAGE:
+- Translate the FINAL answer into {language}
+- Do NOT mention translation explicitly
+- Use simple and natural language
+
+CONTENT RULES:
+- If the question is mathematical or logical → explain step-by-step and give final answer
+- If conceptual → explain clearly and structurally
+
+OUTPUT FORMAT (STRICT):
+- Output MUST be valid HTML ONLY
+- Use inline CSS
+- Background: #F5F5F5
+- Text color: #000000
+- Border-radius: 8px
+- Padding: 16px
+- Use:
+  <h2>, <p>, <ul>, <li>, <b>
+
+DO NOT:
+- Add markdown
+- Add explanations outside HTML
+
+ONLY RETURN HTML.
+
+User Question:
+{query}
+"""
+
+    response = model.generate_content(prompt)
+
+    if not response or not response.text:
+        raise Exception("Empty response from Gemini")
+
+    return response.text.strip()
+
+
+
 
 # ============================================================================
 # API ROUTES
@@ -363,24 +447,21 @@ async def root():
 
 @app.post("/api/query")
 async def answer_query(request: QueryRequest):
-    """Answer a general query using Gemini"""
     try:
-        answer = generate_answer(request.query)
-        translation = None
-        
-        if request.language and request.language.lower() != "none":
-            translation = translate_text(answer, request.language)
-        
+        answer = answer_query_single_call(
+            query=request.query,
+            language=request.language
+        )
+
         return JSONResponse({
             "success": True,
-            "answer": answer,
-            "translation": translation
+            "answer": answer
         })
-    except HTTPException as he:
-        return error_response(he.detail, status_code=he.status_code)
+
     except Exception as e:
-        print(f"Unexpected error in answer_query: {traceback.format_exc()}")
-        return error_response("An unexpected error occurred. Please try again.", status_code=500)
+        print(f"Query error: {traceback.format_exc()}")
+        return error_response("Failed to answer query", status_code=500)
+
 
 
 @app.post("/api/ocr")
@@ -567,12 +648,8 @@ async def process_file(
 @app.post("/api/explain-image")
 async def explain_image(
     file: UploadFile = File(...),
-    language: str = Form("hindi")
+    language: str = Form("hindi")  # "english", "hindi", "none"
 ):
-    """
-    Explain what's in an image using vision model
-    Returns detailed HTML explanation and optional translation
-    """
     try:
         content = await file.read()
 
@@ -582,63 +659,20 @@ async def explain_image(
                 status_code=400
             )
 
-        print("Starting image-to-text conversion...")
-        
-        # Step 1: Image → Text (Vision)
-        try:
-            explanation = ImageToText(content)
-            print(f"Image to text completed: {explanation[:100]}...")
-        except Exception as vision_error:
-            print(f"Vision API error: {vision_error}")
-            return error_response(
-                "Failed to analyze image. Vision service may be unavailable.",
-                status_code=500
-            )
-
-        # Step 2: Text → Detailed HTML explanation
-        detailed_prompt = f"""
-You are an intelligent tutor.
-
-Determine whether the input below is:
-1) A mathematical problem → explain step-by-step with calculations and final answer
-2) Descriptive/visual content → explain clearly and structurally
-
-Rules:
-- Output MUST be valid HTML
-- Use inline CSS
-- Background: #F5F5F5
-- Text color: #000000
-- Border-radius: 8px
-- Padding: 16px
-- Use <h2>, <p>, <ul>, <li>, <b> for structure
-
-Input:
-{explanation}
-"""
-
-        detailed_explanation = call_gemini_api(detailed_prompt)
-
-        # Step 3: Optional Translation
-        translation = None
-        if language and language.lower() != "none":
-            try:
-                translation = translate_text(detailed_explanation, language)
-            except Exception as trans_error:
-                print(f"Translation failed: {trans_error}")
-                # Continue without translation
+        # Single Vision Call
+        html_response = explain_image_single_call(
+            image_bytes=content,
+            language=language
+        )
 
         return JSONResponse({
             "success": True,
-            "explanation": detailed_explanation,
-            "translation": translation
+            "explanation": html_response
         })
 
-    except HTTPException as he:
-        return error_response(he.detail, status_code=he.status_code)
     except Exception as e:
-        print(f"Unexpected error in explain_image: {traceback.format_exc()}")
-        return error_response("Failed to explain image. Please try again.", status_code=500)
-
+        print(f"Explain image error: {e}")
+        return error_response("Failed to explain image", 500)
 
 # ============================================================================
 # MAIN
