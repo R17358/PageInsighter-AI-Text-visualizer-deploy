@@ -16,7 +16,8 @@
     </header>
 
     <div class="tabs">
-      <div class="tab active" onclick="switchTab('query')">🤖 Ask AI</div>
+      <div class="tab active" onclick="switchTab('chat')">💬 AI Chat</div>
+      <div class="tab" onclick="switchTab('query')">🤖 Ask AI</div>
       <div class="tab" onclick="switchTab('prompt')">✨ Prompt Gen</div>
       <div class="tab" onclick="switchTab('visualize')">🎨 Visualize</div>
       <div class="tab" onclick="switchTab('upload')">📁 Upload & Process</div>
@@ -38,10 +39,101 @@
           <div class="stat-value" id="filesProcessed">0</div>
           <div class="stat-label">Files Processed</div>
         </div>
+        <div class="stat-card">
+          <div class="stat-value" id="chatMessagesState">0</div>
+          <div class="stat-label">Chat Messages</div>
+        </div>
+      </div>
+
+      <!-- AI Chat Tab -->
+      <div id="chat" class="tab-content active">
+        <div class="card chat-card">
+          <div class="chat-header">
+            <h2>💬 AI Chat Assistant</h2>
+            <div class="chat-controls">
+              <button class="icon-btn" onclick="clearChat()" title="Clear Chat">
+                🗑️
+              </button>
+              <button
+                class="icon-btn"
+                onclick="exportChat()"
+                title="Export Chat"
+              >
+                💾
+              </button>
+            </div>
+          </div>
+
+          <!-- Chat Messages Container -->
+          <div class="chat-messages" id="conversation">
+            <div class="welcome-message">
+              <div class="welcome-icon">🤖</div>
+              <h3>Welcome to PageInsighter AI Chat!</h3>
+              <p>I can help you with:</p>
+              <ul>
+                <li>🖼️ Generate images from text descriptions</li>
+                <li>🔍 Search the web for current information</li>
+                <li>📄 Analyze documents and images</li>
+                <li>💡 Answer questions and solve problems</li>
+                <li>🎨 Create visual content with multiple styles</li>
+              </ul>
+              <p class="welcome-tip">
+                Try: "Generate an image of a sunset over mountains" or "Analyze
+                this document"
+              </p>
+            </div>
+          </div>
+
+          <!-- <div id="conversation"></div> -->
+
+          <!-- File Upload Preview (for chat) -->
+          <div
+            id="chatFilePreview"
+            class="chat-file-preview"
+            style="display: none"
+          ></div>
+
+          <!-- Chat Input Area -->
+          <div class="chat-input-container">
+            <input
+              type="file"
+              id="chatFileInput"
+              accept="image/*,.pdf"
+              style="display: none"
+              multiple
+            />
+            <button
+              class="icon-btn attach-btn"
+              onclick="document.getElementById('chatFileInput').click()"
+              title="Attach Files"
+            >
+              📎
+            </button>
+            <!-- <textarea
+              id="chatInput"
+              placeholder="Type your message here... (Ctrl+Enter to send)"
+              rows="1"
+              onkeydown="handleEnter(event)"
+            ></textarea> -->
+             <textarea
+              id="chatInput"
+              placeholder="Type your message here... (Ctrl+Enter to send)"
+              rows="1"
+            ></textarea>
+
+            <button
+              class="icon-btn send-btn"
+              onclick="sendChatMessage()"
+              title="Send Message"
+            >
+              ➤
+          </button>
+          </div>
+        </div>
       </div>
 
       <!-- Ask AI Tab -->
-      <div id="query" class="tab-content active">
+      <div id="query" class="tab-content">
         <div class="card">
           <h2>Ask AI Anything</h2>
           <div class="form-group">
@@ -96,21 +188,21 @@
               id="visualText"
               placeholder="Transform your words into stunning visuals..."
             ></textarea>
-            <div class="form-group">
-              <label>Image Style</label>
-              <select id="visualStyle">
-                <option value="realistic">Realistic</option>
-                <option value="academic art">Academic Art</option>
-                <option value="fantasy art">Fantasy Art</option>
-                <option value="ghibli studio">Ghibli Studio</option>
-                <option value="comic style">Comic Style</option>
-                <option value="anime style">Anime Style</option>
-                <option value="oil painting">Oil Painting</option>
-                <option value="watercolor">Watercolor</option>
-                <option value="cyberpunk">Cyberpunk</option>
-                <option value="minimalist">Minimalist</option>
-              </select>
-            </div>
+          </div>
+          <div class="form-group">
+            <label>Image Style</label>
+            <select id="visualStyle">
+              <option value="realistic">Realistic</option>
+              <option value="academic art">Academic Art</option>
+              <option value="fantasy art">Fantasy Art</option>
+              <option value="ghibli studio">Ghibli Studio</option>
+              <option value="comic style">Comic Style</option>
+              <option value="anime style">Anime Style</option>
+              <option value="oil painting">Oil Painting</option>
+              <option value="watercolor">Watercolor</option>
+              <option value="cyberpunk">Cyberpunk</option>
+              <option value="minimalist">Minimalist</option>
+            </select>
           </div>
           <button class="btn" onclick="visualize()">🎨 Generate Image</button>
           <div class="loading" id="visualLoading"></div>
@@ -212,614 +304,6 @@
 
     <div class="toast-container" id="toastContainer"></div>
 
-    <script>
-      // const API = "https://pageinsighter-yn21.onrender.com";
-      const API = "http://localhost:8000";
-
-      // Stats
-      let stats = {
-        totalRequests: 0,
-        imagesGenerated: 0,
-        filesProcessed: 0,
-      };
-
-      // Load stats from localStorage
-      if (localStorage.getItem("stats")) {
-        stats = JSON.parse(localStorage.getItem("stats"));
-        updateStatsDisplay();
-      }
-
-      function updateStatsDisplay() {
-        document.getElementById("totalRequests").textContent =
-          stats.totalRequests;
-        document.getElementById("imagesGenerated").textContent =
-          stats.imagesGenerated;
-        document.getElementById("filesProcessed").textContent =
-          stats.filesProcessed;
-        localStorage.setItem("stats", JSON.stringify(stats));
-      }
-      
-
-      function incrementStat(type) {
-        stats[type]++;
-        updateStatsDisplay();
-      }
-
-      // Create particles
-      function createParticles() {
-        const container = document.getElementById("particles");
-        for (let i = 0; i < 30; i++) {
-          const particle = document.createElement("div");
-          particle.className = "particle";
-          particle.style.left = Math.random() * 100 + "%";
-          particle.style.top = Math.random() * 100 + "%";
-          particle.style.animationDelay = Math.random() * 20 + "s";
-          particle.style.animationDuration = 15 + Math.random() * 10 + "s";
-          container.appendChild(particle);
-        }
-      }
-      createParticles();
-
-      // Tab switching
-      function switchTab(tabName) {
-        document
-          .querySelectorAll(".tab")
-          .forEach((t) => t.classList.remove("active"));
-        document
-          .querySelectorAll(".tab-content")
-          .forEach((c) => c.classList.remove("active"));
-
-        event.target.classList.add("active");
-        document.getElementById(tabName).classList.add("active");
-      }
-
-      // Toast notifications
-      function showToast(type, title, message) {
-        const container = document.getElementById("toastContainer");
-        const toast = document.createElement("div");
-        toast.className = `toast ${type}`;
-
-        const icons = {
-          success: "✅",
-          error: "❌",
-          warning: "⚠️",
-          info: "ℹ️",
-        };
-
-        toast.innerHTML = `
-    <div class="toast-icon">${icons[type]}</div>
-    <div class="toast-content">
-      <div class="toast-title">${title}</div>
-      <div class="toast-message">${message}</div>
-    </div>
-    <button class="toast-close" onclick="this.parentElement.remove()">×</button>
-  `;
-
-        container.appendChild(toast);
-
-        setTimeout(() => {
-          toast.style.animation = "slideInRight 0.3s ease reverse";
-          setTimeout(() => toast.remove(), 300);
-        }, 5000);
-      }
-
-      // Helper functions
-      function showLoading(id) {
-        document.getElementById(id).classList.add("show");
-      }
-
-      function hideLoading(id) {
-        document.getElementById(id).classList.remove("show");
-      }
-
-      function showOutput(id, content) {
-        const el = document.getElementById(id);
-        el.innerHTML = content;
-        el.style.display = "block";
-        // Smooth scroll to output
-        setTimeout(() => {
-          el.scrollIntoView({ behavior: "smooth", block: "nearest" });
-        }, 100);
-      }
-
-      function clearOutput(id) {
-        const el = document.getElementById(id);
-        el.innerHTML = "";
-        el.style.display = "none";
-      }
-
-      function downloadImage(base64Data, filename) {
-        const link = document.createElement("a");
-        link.href = "data:image/jpeg;base64," + base64Data;
-        link.download = filename;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        showToast("success", "Downloaded!", `Image saved as ${filename}`);
-      }
-
-      function downloadVisualImage() {
-        const img = document.getElementById("visualImage");
-        const base64 = img.src.split(",")[1];
-        downloadImage(base64, "pageinsighter-visual.jpg");
-      }
-
-      // API call handler
-      async function handleApiCall(apiFunc, loadingId, errorTitle) {
-        showLoading(loadingId);
-        incrementStat("totalRequests");
-
-        try {
-          await apiFunc();
-          showToast("success", "Success!", "Operation completed successfully");
-        } catch (error) {
-          console.error("API Error:", error);
-
-          let errorMessage = "Something went wrong. Please try again.";
-          let toastType = "error";
-
-          if (error.apiError) {
-            errorMessage = error.message;
-            toastType = error.type || "error";
-          } else if (
-            error.message.includes("Failed to fetch") ||
-            error.message.includes("NetworkError")
-          ) {
-            errorMessage =
-              "Network error. Please check your internet connection.";
-            toastType = "error";
-          } else {
-            errorMessage = error.message || errorMessage;
-          }
-
-          showToast(toastType, errorTitle, errorMessage);
-        } finally {
-          hideLoading(loadingId);
-        }
-      }
-
-      // Parse API response
-      async function parseApiResponse(response) {
-        const data = await response.json();
-
-        if (!response.ok || !data.success) {
-          const error = new Error(data.error || `HTTP ${response.status}`);
-          error.apiError = true;
-
-          if (response.status === 429) {
-            error.type = "warning";
-          } else if (response.status >= 400 && response.status < 500) {
-            error.type = "warning";
-          } else {
-            error.type = "error";
-          }
-
-          throw error;
-        }
-
-        return data;
-      }
-
-      // API Functions
-      async function askQuery() {
-        const query = document.getElementById("queryText").value.trim();
-        if (!query) {
-          showToast("warning", "Input Required", "Please enter a question");
-          return;
-        }
-
-        clearOutput("queryResult");
-
-        await handleApiCall(
-          async () => {
-            const r = await fetch(`${API}/api/query`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                query: query,
-                language: document.getElementById("queryLang").value,
-              }),
-            });
-
-            const d = await parseApiResponse(r);
-
-            let content = `<div class="result-section"><strong>Answer:</strong><div class="result-content">${d.answer}</div></div>`;
-            if (d.translation) {
-              content += `<div class="result-section"><strong>Translation:</strong><div class="result-content">${d.translation}</div></div>`;
-            }
-            showOutput("queryResult", content);
-          },
-          "queryLoading",
-          "Query Failed",
-        );
-      }
-
-      async function generatePrompt() {
-        const text = document.getElementById("promptText").value.trim();
-        if (!text) {
-          showToast("warning", "Input Required", "Please describe a scene");
-          return;
-        }
-
-        clearOutput("promptResult");
-
-        await handleApiCall(
-          async () => {
-            const r = await fetch(`${API}/api/generate-image-prompt`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ text: text }),
-            });
-
-            const d = await parseApiResponse(r);
-            showOutput(
-              "promptResult",
-              `<div class="result-section"><strong>Generated Prompt:</strong><div class="result-content">${d.prompt}</div></div>`,
-            );
-          },
-          "promptLoading",
-          "Prompt Generation Failed",
-        );
-      }
-
-      async function visualize() {
-        const text = document.getElementById("visualText").value.trim();
-        const style = document.getElementById("visualStyle").value; // FIX: Get the selected style
-        
-        if (!text) {
-          showToast(
-            "warning",
-            "Input Required",
-            "Please enter text to visualize",
-          );
-          return;
-        }
-
-        document.getElementById("visualContainer").style.display = "none";
-
-        await handleApiCall(
-          async () => {
-            const r = await fetch(`${API}/api/visualize`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ 
-                query: text,
-                style: style  // FIX: Pass the style to backend
-              }),
-            });
-
-            const d = await parseApiResponse(r);
-
-            document.getElementById("visualImage").src =
-              "data:image/jpeg;base64," + d.image;
-            document.getElementById("visualContainer").style.display = "block";
-            incrementStat("imagesGenerated");
-          },
-          "visualLoading",
-          "Visualization Failed",
-        );
-      }
-
-      async function processFile() {
-        const fileInput = document.getElementById("fileInput");
-        if (!fileInput.files[0]) {
-          showToast(
-            "warning",
-            "File Required",
-            "Please select a file to process",
-          );
-          return;
-        }
-
-        clearOutput("fileResult");
-        document.getElementById("fileImages").innerHTML = "";
-
-        await handleApiCall(
-          async () => {
-            const f = new FormData();
-            f.append("file", fileInput.files[0]);
-            f.append("language", document.getElementById("fileLang").value);
-            f.append(
-              "explain",
-              document.getElementById("explainCheck").checked,
-            );
-            f.append(
-              "generate_images",
-              document.getElementById("imageCheck").checked,
-            );
-            
-            // FIX: Get and append the image style
-            const imageStyle = document.getElementById("fileImageStyle").value;
-            f.append("style", imageStyle);
-
-            const r = await fetch(`${API}/api/process-file`, {
-              method: "POST",
-              body: f,
-            });
-
-            const d = await parseApiResponse(r);
-
-            console.log(d);
-
-            let content = "";
-            if (d.extracted_text) {
-              content += `<div class="result-section"><strong>Extracted Text:</strong><div class="result-content">${d.extracted_text}</div></div>`;
-            }
-            if (d.summary) {
-              content += `<div class="result-section"><strong>Summary/Explanation:</strong><div class="result-content">${d.summary}</div></div>`;
-            }
-            if (d.translation) {
-              content += `<div class="result-section"><strong>Translation:</strong><div class="result-content">${d.translation}</div></div>`;
-            }
-
-            if (content) {
-              showOutput("fileResult", content);
-            }
-
-            const imagesContainer = document.getElementById("fileImages");
-
-            if (d.images && d.images.length > 0) {
-              d.images.forEach((img, index) => {
-                const wrapper = document.createElement("div");
-                wrapper.className = "image-wrapper";
-
-                const imgElement = document.createElement("img");
-                imgElement.src = "data:image/jpeg;base64," + img.image;
-                imgElement.className = "generated";
-                imgElement.alt = `Generated image ${index + 1}`;
-
-                const downloadBtn = document.createElement("button");
-                downloadBtn.className = "download-btn";
-                downloadBtn.textContent = "⬇ Download";
-                downloadBtn.onclick = () =>
-                  downloadImage(img.image, `pageinsighter-${index + 1}.jpg`);
-
-                wrapper.appendChild(imgElement);
-                wrapper.appendChild(downloadBtn);
-                imagesContainer.appendChild(wrapper);
-
-                incrementStat("imagesGenerated");
-              });
-
-              // Show images section
-              imagesContainer.style.display = "grid";
-              // Scroll to images
-              setTimeout(() => {
-                imagesContainer.scrollIntoView({
-                  behavior: "smooth",
-                  block: "nearest",
-                });
-              }, 100);
-            }
-
-            incrementStat("filesProcessed");
-          },
-          "fileLoading",
-          "File Processing Failed",
-        );
-      }
-
-      async function explainImage() {
-        const fileInput = document.getElementById("explainInput");
-        if (!fileInput.files[0]) {
-          showToast(
-            "warning",
-            "File Required",
-            "Please select an image to explain",
-          );
-          return;
-        }
-
-        clearOutput("explainResult");
-
-        await handleApiCall(
-          async () => {
-            const f = new FormData();
-            f.append("file", fileInput.files[0]);
-            f.append("language", document.getElementById("explainLang").value);
-
-            const r = await fetch(`${API}/api/explain-image`, {
-              method: "POST",
-              body: f,
-            });
-
-            const d = await parseApiResponse(r);
-
-            let content = `<div class="result-section"><strong>Explanation:</strong><div class="result-content">${d.explanation}</div></div>`;
-            if (d.translation) {
-              content += `<div class="result-section"><strong>Translation:</strong><div class="result-content">${d.translation}</div></div>`;
-            }
-
-            showOutput("explainResult", content);
-          },
-          "explainLoading",
-          "Image Explanation Failed",
-        );
-      }
-
-      // File preview handlers
-      document
-        .getElementById("fileInput")
-        .addEventListener("change", function (e) {
-          const file = e.target.files[0];
-          if (!file) return;
-
-          let previewContainer = document.getElementById("filePreview");
-          if (!previewContainer) {
-            previewContainer = document.createElement("div");
-            previewContainer.id = "filePreview";
-            previewContainer.className = "file-preview";
-            e.target.parentElement.appendChild(previewContainer);
-          }
-
-          previewContainer.innerHTML = "";
-
-          if (file.type.startsWith("image/")) {
-            const reader = new FileReader();
-            reader.onload = function (event) {
-              previewContainer.innerHTML = `
-        <div class="preview-wrapper">
-          <img src="${event.target.result}" alt="Preview" class="preview-image">
-          <p class="preview-filename">${file.name}</p>
-        </div>
-      `;
-            };
-            reader.readAsDataURL(file);
-          } else {
-            previewContainer.innerHTML = `
-      <div class="preview-wrapper">
-        <div class="file-icon">📄</div>
-        <p class="preview-filename">${file.name}</p>
-        <p class="preview-filesize">${(file.size / 1024).toFixed(2)} KB</p>
-      </div>
-    `;
-          }
-        });
-
-      document
-        .getElementById("explainInput")
-        .addEventListener("change", function (e) {
-          const file = e.target.files[0];
-          if (!file) return;
-
-          let previewContainer = document.getElementById("explainPreview");
-          if (!previewContainer) {
-            previewContainer = document.createElement("div");
-            previewContainer.id = "explainPreview";
-            previewContainer.className = "file-preview";
-            e.target.parentElement.appendChild(previewContainer);
-          }
-
-          previewContainer.innerHTML = "";
-
-          if (file.type.startsWith("image/")) {
-            const reader = new FileReader();
-            reader.onload = function (event) {
-              previewContainer.innerHTML = `
-        <div class="preview-wrapper">
-          <img src="${event.target.result}" alt="Preview" class="preview-image">
-          <p class="preview-filename">${file.name}</p>
-        </div>
-      `;
-            };
-            reader.readAsDataURL(file);
-          } else {
-            previewContainer.innerHTML = `
-      <div class="preview-wrapper">
-        <div class="file-icon">🖼️</div>
-        <p class="preview-filename">${file.name}</p>
-        <p class="preview-error">Please select an image file</p>
-      </div>
-    `;
-          }
-        });
-
-      // Keyboard shortcuts
-      document.addEventListener("keydown", (e) => {
-        if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
-          const activeTab = document.querySelector(".tab-content.active");
-          const textarea = activeTab.querySelector("textarea");
-
-          if (textarea && textarea === document.activeElement) {
-            e.preventDefault();
-            const activeTabId = activeTab.id;
-
-            switch (activeTabId) {
-              case "query":
-                askQuery();
-                break;
-              case "prompt":
-                generatePrompt();
-                break;
-              case "visualize":
-                visualize();
-                break;
-            }
-          }
-        }
-      });
-
-      // Auto-resize textareas
-      document.querySelectorAll("textarea").forEach((textarea) => {
-        textarea.addEventListener("input", function () {
-          this.style.height = "auto";
-          this.style.height = this.scrollHeight + "px";
-        });
-      });
-
-      // Image click to enlarge
-      document.addEventListener("click", (e) => {
-        if (e.target.classList.contains("generated")) {
-          const modal = document.createElement("div");
-          modal.style.cssText = `
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      background: rgba(0,0,0,0.95);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      z-index: 10000;
-      cursor: pointer;
-      animation: fadeIn 0.3s ease;
-    `;
-
-          const img = document.createElement("img");
-          img.src = e.target.src;
-          img.style.cssText = `
-      max-width: 90%;
-      max-height: 90%;
-      border-radius: 16px;
-      box-shadow: 0 0 50px rgba(79,156,255,0.8);
-    `;
-
-          modal.appendChild(img);
-          document.body.appendChild(modal);
-
-          modal.onclick = () => modal.remove();
-        }
-      });
-
-      // Initialize
-      console.log(
-        "%c✦ PAGEINSIGHTER AI ✦",
-        "font-size: 24px; color: #4f9cff; font-weight: bold; text-shadow: 0 0 10px #4f9cff;",
-      );
-      console.log(
-        "%cAdvanced Vision Processing System",
-        "font-size: 14px; color: #00fff5;",
-      );
-      console.log("%cAPI: " + API, "font-size: 12px; color: #e5e7eb;");
-
-      // Check API health on load
-      fetch(`${API}/`)
-        .then((r) => r.json())
-        .then((d) => {
-          console.log(
-            "%c✓ API Connected",
-            "color: #10b981; font-weight: bold;",
-            d,
-          );
-          showToast(
-            "info",
-            "System Ready",
-            "PageInsighter AI is online and ready",
-          );
-        })
-        .catch((e) => {
-          console.error(
-            "%c✗ API Connection Failed",
-            "color: #ef4444; font-weight: bold;",
-            e,
-          );
-          showToast(
-            "error",
-            "Connection Error",
-            "Unable to connect to API. Please check your connection.",
-          );
-        });
-    </script>
+    <script src="./script.js"></script>
   </body>
 </html>
