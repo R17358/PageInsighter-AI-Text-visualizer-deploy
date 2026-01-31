@@ -10,6 +10,8 @@ let stats = {
   chatMessages: 0,
 };
 
+// chat
+
 // Chat state
 let chatHistory = [];
 let chatSessionId = generateSessionId();
