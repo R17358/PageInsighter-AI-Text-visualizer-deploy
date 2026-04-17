@@ -1,3 +1,5 @@
+//chatbot.js
+
 (function () {
   const chatBtn = document.createElement("button");
   chatBtn.innerText = "Chat";
