@@ -1,4 +1,4 @@
-//chatbot.js
+//chatbot.js integrated
 
 (function () {
   const chatBtn = document.createElement("button");
