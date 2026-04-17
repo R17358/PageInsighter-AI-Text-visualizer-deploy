@@ -1,7 +1,7 @@
 (function () {
   // ================= BUTTON =================
   const chatBtn = document.createElement("button");
-  chatBtn.innerText = "💬";
+  chatBtn.innerText = "💬PageInsighter";
   
   Object.assign(chatBtn.style, {
     position: "fixed",
