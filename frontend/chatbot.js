@@ -28,7 +28,7 @@
     }
 
     iframe = document.createElement("iframe");
-    iframe.src = "https://your-frontend.vercel.app"; // your deployed frontend
+    iframe.src = "https://page-insighter.vercel.app"; // your deployed frontend
     iframe.style.position = "fixed";
     iframe.style.bottom = "80px";
     iframe.style.right = "20px";
