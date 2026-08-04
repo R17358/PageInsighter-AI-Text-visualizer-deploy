@@ -1,24 +1,24 @@
 """
 Image Generation Module
-Handles API calls to external image generation service (Pollinations.ai)
+Handles API calls to external image generation service (Fireworks AI - FLUX.1 Schnell)
 """
 
 import requests
 import os
-from urllib.parse import quote
 from datetime import datetime
 from dotenv import load_dotenv
 
 # Load environment variables
 load_dotenv()
 
-# Pollinations.ai base URL (no API key required)
-POLLINATIONS_BASE_URL = os.getenv("ImgGenURL")
+# Fireworks AI Configuration
+FIREWORKS_BASE_URL = os.getenv("ImgGenURL")
+FIREWORKS_API_KEY = os.getenv("FIREWORKS_API_KEY")
 
 
 def ImageGenerator(prompt: str):
     """
-    Generate image from text prompt using Pollinations.ai (free, unlimited)
+    Generate image from text prompt using Fireworks AI (FLUX.1 Schnell Workflow)
     
     Args:
         prompt (str): Text description for image generation
@@ -33,25 +33,35 @@ def ImageGenerator(prompt: str):
             print("Error: Empty prompt provided")
             return None, False
 
-        # URL-encode the prompt
-        encoded_prompt = quote(prompt)
+        if not FIREWORKS_API_KEY:
+            print("Error: FIREWORKS_API_KEY is missing in environment variables")
+            return None, False
 
-        # Build final URL with generation params
-        url = f"{POLLINATIONS_BASE_URL}{encoded_prompt}"
-        params = {
-            "width": 1024,
-            "height": 1024,
-            "nologo": "true",
-            # "seed": 42,        # uncomment for reproducible output
-            # "model": "flux",   # uncomment to force a specific model
+        if not FIREWORKS_BASE_URL:
+            print("Error: ImgGenURL (Fireworks API URL) is missing in environment variables")
+            return None, False
+
+        # Fireworks AI expects headers with Bearer token
+        headers = {
+            "Authorization": f"Bearer {FIREWORKS_API_KEY}",
+            "Content-Type": "application/json"
         }
 
-        print(f"Requesting image generation for: {prompt[:50]}...")
+        # Request payload for FLUX.1 Schnell
+        payload = {
+            "prompt": prompt,
+            "width": 1024,
+            "height": 1024,
+            "num_steps": 4  # Schnell performs best and fastest at 4 steps
+        }
 
-        # Make API request with timeout
-        response = requests.get(
-            url,
-            params=params,
+        print(f"Requesting image generation from Fireworks AI for: {prompt[:50]}...")
+
+        # Fireworks AI requires a POST request with JSON payload (not a GET request with URL params)
+        response = requests.post(
+            FIREWORKS_BASE_URL,
+            headers=headers,
+            json=payload,
             timeout=60  # 60 second timeout
         )
 
@@ -77,7 +87,7 @@ def ImageGenerator(prompt: str):
         return None, False
 
     except requests.exceptions.ConnectionError:
-        print("Error: Could not connect to image generation API")
+        print("Error: Could not connect to Fireworks AI API")
         return None, False
 
     except requests.exceptions.RequestException as req_error:
