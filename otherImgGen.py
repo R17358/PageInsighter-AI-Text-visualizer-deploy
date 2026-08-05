@@ -1,101 +1,68 @@
 """
 Image Generation Module
-Handles API calls to external image generation service (Fireworks AI - FLUX.1 Schnell)
+Handles API calls to Hugging Face Inference Providers (FLUX.1 Schnell)
 """
 
-import requests
 import os
-from datetime import datetime
+import io
 from dotenv import load_dotenv
+from huggingface_hub import InferenceClient
 
 # Load environment variables
 load_dotenv()
 
-# Fireworks AI Configuration
-FIREWORKS_BASE_URL = os.getenv("ImgGenURL")
-FIREWORKS_API_KEY = os.getenv("FIREWORKS_API_KEY")
+HF_API_KEY = os.getenv("HF_TOKEN")
+
+# Initialize Hugging Face Client
+client = InferenceClient(
+    provider="auto",   # Automatically selects an available provider
+    api_key=HF_API_KEY
+)
+
+MODEL = "black-forest-labs/FLUX.1-schnell"
 
 
 def ImageGenerator(prompt: str):
     """
-    Generate image from text prompt using Fireworks AI (FLUX.1 Schnell Workflow)
-    
+    Generate image from text prompt using Hugging Face Inference Providers
+
     Args:
         prompt (str): Text description for image generation
-        
+
     Returns:
         tuple: (image_bytes, success_flag)
-            - image_bytes: Raw image data as bytes (or None if failed)
-            - success_flag: Boolean indicating success/failure
+            - image_bytes: Raw image bytes
+            - success_flag: True if successful
     """
+
     try:
+
         if not prompt or not prompt.strip():
             print("Error: Empty prompt provided")
             return None, False
 
-        if not FIREWORKS_API_KEY:
-            print("Error: FIREWORKS_API_KEY is missing in environment variables")
+        if not HF_API_KEY:
+            print("Error: HF_TOKEN missing in .env")
             return None, False
 
-        if not FIREWORKS_BASE_URL:
-            print("Error: ImgGenURL (Fireworks API URL) is missing in environment variables")
-            return None, False
+        print(f"Generating image for: {prompt[:60]}...")
 
-        # Fireworks AI expects headers with Bearer token
-        headers = {
-            "Authorization": f"Bearer {FIREWORKS_API_KEY}",
-            "Content-Type": "application/json"
-        }
-
-        # Request payload for FLUX.1 Schnell
-        payload = {
-            "prompt": prompt,
-            "width": 1024,
-            "height": 1024,
-            "num_steps": 4  # Schnell performs best and fastest at 4 steps
-        }
-
-        print(f"Requesting image generation from Fireworks AI for: {prompt[:50]}...")
-
-        # Fireworks AI requires a POST request with JSON payload (not a GET request with URL params)
-        response = requests.post(
-            FIREWORKS_BASE_URL,
-            headers=headers,
-            json=payload,
-            timeout=60  # 60 second timeout
+        # Generate PIL Image
+        image = client.text_to_image(
+            prompt,
+            model=MODEL
         )
 
-        # Check response status
-        if response.status_code == 200:
-            image_bytes = response.content
+        # Convert PIL Image → Bytes
+        img_bytes = io.BytesIO()
+        image.save(img_bytes, format="PNG")
 
-            # Validate image data
-            if not image_bytes or len(image_bytes) < 100:
-                print("Error: Received empty or invalid image data")
-                return None, False
+        print("✓ Image generated successfully")
 
-            print(f"✓ Image generated successfully ({len(image_bytes)} bytes)")
-            return image_bytes, True
-
-        else:
-            print(f"Error: API returned status {response.status_code}")
-            print(f"Response: {response.text[:200]}")
-            return None, False
-
-    except requests.exceptions.Timeout:
-        print("Error: Image generation request timed out (60s)")
-        return None, False
-
-    except requests.exceptions.ConnectionError:
-        print("Error: Could not connect to Fireworks AI API")
-        return None, False
-
-    except requests.exceptions.RequestException as req_error:
-        print(f"Error: Request failed - {req_error}")
-        return None, False
+        return img_bytes.getvalue(), True
 
     except Exception as e:
-        print(f"Unexpected error in ImageGenerator: {e}")
-        import traceback
-        traceback.print_exc()
+
+        print(f"Image Generation Error: {e}")
+
         return None, False
