@@ -48,7 +48,7 @@ app.add_middleware(
 
 # Configure Gemini API
 API_KEY = os.getenv("gemini_key")
-GEMINI_MODEL = os.getenv("gemini_model", "gemini-2.0-flash-exp")
+GEMINI_MODEL = os.getenv("gemini_model")
 genai.configure(api_key=API_KEY)
 
 # Session storage (use Redis/database in production)
@@ -218,23 +218,61 @@ def bytes_to_base64(image_bytes: bytes) -> str:
 # GEMINI API FUNCTIONS
 # ============================================================================
 
-def call_gemini_api(prompt: str, image: Optional[Image.Image] = None) -> str:
-    """Unified Gemini API call with error handling"""
-    try:
-        model = genai.GenerativeModel(GEMINI_MODEL)
+# def call_gemini_api(prompt: str, image: Optional[Image.Image] = None) -> str:
+#     """Unified Gemini API call with error handling"""
+#     try:
+#         model = genai.GenerativeModel(GEMINI_MODEL)
         
+#         if image:
+#             response = model.generate_content([prompt, image])
+#         else:
+#             response = model.generate_content(prompt)
+        
+#         if not response or not response.text:
+#             raise ValueError("No response from Gemini API")
+        
+#         return response.text.strip()
+    
+#     except Exception as e:
+#         print(f"Gemini API Error: {str(e)}")
+#         handle_gemini_error(e)
+
+def call_gemini_api(prompt: str, image=None):
+
+    try:
+
+        model = genai.GenerativeModel(GEMINI_MODEL)
+
         if image:
             response = model.generate_content([prompt, image])
         else:
             response = model.generate_content(prompt)
-        
-        if not response or not response.text:
-            raise ValueError("No response from Gemini API")
-        
-        return response.text.strip()
-    
+
+        if not response:
+            raise ValueError("No response from Gemini")
+
+        # Try normal accessor first
+        try:
+            if response.text:
+                return response.text.strip()
+        except Exception:
+            pass
+
+        # Fallback for multipart responses
+        parts = []
+
+        if response.candidates:
+            for part in response.candidates[0].content.parts:
+                if hasattr(part, "text") and part.text:
+                    parts.append(part.text)
+
+        if parts:
+            return "".join(parts).strip()
+
+        raise ValueError("No text found in Gemini response")
+
     except Exception as e:
-        print(f"Gemini API Error: {str(e)}")
+        print("Gemini API Error:", e)
         handle_gemini_error(e)
 
 def extract_text_from_image(image: Image.Image) -> str:
